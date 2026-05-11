@@ -20,7 +20,13 @@ from .protocol import COMMIT_COMMAND, STATUS_COMMAND, SolemStatus, parse_status_
 
 _LOGGER = logging.getLogger(__name__)
 
-ClientFactory = Callable[[str, float], Any]
+BluetoothTarget = str | BLEDevice
+ClientFactory = Callable[[BluetoothTarget, float], Any]
+
+
+def is_solem_device_name(name: str | None) -> bool:
+    """Return whether a Bluetooth name looks like a SOLEM BL-IP controller."""
+    return bool(name and name.upper().startswith(DEVICE_NAME_PREFIXES))
 
 
 class SolemBleClient:
@@ -30,14 +36,20 @@ class SolemBleClient:
         self,
         address: str,
         timeout: float = DEFAULT_BLUETOOTH_TIMEOUT,
+        ble_device: BLEDevice | None = None,
         client_factory: ClientFactory | None = None,
     ) -> None:
         self.address = address
         self.timeout = timeout
-        self._client_factory = client_factory or (lambda address, timeout: BleakClient(address, timeout=timeout))
+        self.ble_device = ble_device
+        self._client_factory = client_factory or (lambda target, timeout: BleakClient(target, timeout=timeout))
         self._client: Any | None = None
         self._notification_event = asyncio.Event()
         self._last_notification: bytes | None = None
+
+    def set_ble_device(self, ble_device: BLEDevice | None) -> None:
+        """Update the HA-resolved BLE device used for the next connection."""
+        self.ble_device = ble_device
 
     @staticmethod
     async def discover(timeout: float = 10.0) -> list[BLEDevice]:
@@ -46,14 +58,14 @@ class SolemBleClient:
         return [
             device
             for device in devices
-            if device.name and device.name.upper().startswith(DEVICE_NAME_PREFIXES)
+            if is_solem_device_name(device.name)
         ]
 
     async def connect(self) -> None:
         """Connect to the BLE device."""
         if self._client and self._client.is_connected:
             return
-        self._client = self._client_factory(self.address, self.timeout)
+        self._client = self._client_factory(self.ble_device or self.address, self.timeout)
         await self._client.connect()
 
     async def disconnect(self) -> None:

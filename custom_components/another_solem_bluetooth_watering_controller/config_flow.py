@@ -6,11 +6,12 @@ from typing import Any
 
 import voluptuous as vol
 
+from homeassistant.components.bluetooth import async_discovered_service_info
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers.selector import selector
 
-from .client import SolemBleClient
+from .client import is_solem_device_name
 from .const import (
     CONF_ADDRESS,
     CONF_BLUETOOTH_TIMEOUT,
@@ -30,6 +31,20 @@ from .const import (
 )
 
 
+def _solem_device_options(service_infos) -> list[dict[str, str]]:
+    """Build selector options from Home Assistant's Bluetooth discovery cache."""
+    devices_by_address: dict[str, str] = {}
+    for service_info in service_infos:
+        if not is_solem_device_name(service_info.name):
+            continue
+        devices_by_address[service_info.address] = service_info.name or "SOLEM BL-IP"
+
+    return [
+        {"value": address, "label": f"{name} ({address})"}
+        for address, name in sorted(devices_by_address.items(), key=lambda item: item[1])
+    ]
+
+
 class SolemConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle config flow."""
 
@@ -44,11 +59,7 @@ class SolemConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the user step."""
         errors: dict[str, str] = {}
-        devices = await SolemBleClient.discover()
-        device_options = [
-            {"value": device.address, "label": f"{device.name or 'SOLEM BL-IP'} ({device.address})"}
-            for device in devices
-        ]
+        device_options = _solem_device_options(async_discovered_service_info(self.hass, True))
 
         if not device_options:
             errors["base"] = "no_devices"
