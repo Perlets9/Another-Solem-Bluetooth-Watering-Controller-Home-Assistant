@@ -18,14 +18,18 @@ class FakeBleakClient:
 
     def __init__(self) -> None:
         self.is_connected = False
+        self.connect_calls = 0
+        self.disconnect_calls = 0
         self.writes: list[tuple[str, bytes, bool]] = []
         self.notify_uuid: str | None = None
         self.notify_handler = None
 
     async def connect(self) -> None:
+        self.connect_calls += 1
         self.is_connected = True
 
     async def disconnect(self) -> None:
+        self.disconnect_calls += 1
         self.is_connected = False
 
     async def write_gatt_char(self, uuid: str, data: bytes, response: bool = False) -> None:
@@ -57,6 +61,17 @@ async def test_send_command_writes_command_then_commit() -> None:
         (WRITE_UUID, bytes.fromhex("31051500ff0000"), False),
         (WRITE_UUID, COMMIT_COMMAND, False),
     ]
+
+
+@pytest.mark.asyncio
+async def test_send_command_disconnects_after_writing() -> None:
+    fake = FakeBleakClient()
+    client = SolemBleClient("AA:BB:CC", client_factory=lambda address, timeout: fake)
+
+    await client.send_command(bytes.fromhex("31051500ff0000"))
+
+    assert fake.disconnect_calls == 1
+    assert fake.is_connected is False
 
 
 @pytest.mark.asyncio

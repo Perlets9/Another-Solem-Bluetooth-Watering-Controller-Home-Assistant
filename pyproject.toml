@@ -5,6 +5,7 @@ description = "Minimal Home Assistant custom integration for SOLEM BL-IP Bluetoo
 requires-python = ">=3.14"
 dependencies = [
   "bleak",
+  "bleak-retry-connector",
   "homeassistant",
 ]
 

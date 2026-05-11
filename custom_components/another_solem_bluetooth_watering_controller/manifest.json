@@ -6,7 +6,7 @@
   "dependencies": ["bluetooth"],
   "documentation": "https://github.com/perlets/Another-Solem-Bluetooth-Watering-Controller-Home-Assistant",
   "iot_class": "local_polling",
-  "requirements": ["bleak"],
+  "requirements": ["bleak", "bleak-retry-connector"],
   "single_config_entry": false,
   "version": "0.1.0"
 }
