@@ -5,6 +5,7 @@ from typing import Any, cast
 
 import pytest
 
+from custom_components.another_solem_bluetooth_watering_controller import client as client_module
 from custom_components.another_solem_bluetooth_watering_controller.client import (
     SolemBleClient,
     is_solem_device_name,
@@ -110,3 +111,30 @@ async def test_connect_uses_ha_resolved_ble_device_when_available() -> None:
     await client.connect()
 
     assert targets == [(fake_device, 15)]
+
+
+@pytest.mark.asyncio
+async def test_connect_uses_service_cache_client_for_ha_resolved_devices(monkeypatch) -> None:
+    fake_client = FakeBleakClient()
+    fake_device = FakeBleDevice("C8:B9:61:D5:AA:7E")
+    calls = []
+
+    async def fake_establish_connection(client_class, device, name, **kwargs):
+        calls.append((client_class, device, name, kwargs))
+        fake_client.is_connected = True
+        return fake_client
+
+    monkeypatch.setattr(client_module, "establish_connection", fake_establish_connection)
+
+    client = SolemBleClient("C8:B9:61:D5:AA:7E", ble_device=cast(Any, fake_device))
+
+    await client.connect()
+
+    assert calls == [
+        (
+            client_module.BleakClientWithServiceCache,
+            fake_device,
+            "C8:B9:61:D5:AA:7E",
+            {"timeout": 15},
+        )
+    ]

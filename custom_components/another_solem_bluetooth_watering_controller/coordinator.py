@@ -58,6 +58,7 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
             _LOGGER,
             name=f"{DOMAIN}-{self.address}",
             update_interval=timedelta(seconds=poll_interval),
+            always_update=False,
         )
 
     def _async_set_latest_ble_device(self) -> bool:

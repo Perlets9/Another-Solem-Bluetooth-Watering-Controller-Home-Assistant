@@ -9,7 +9,7 @@ from typing import Any
 
 from bleak import BleakClient, BleakScanner
 from bleak.backends.device import BLEDevice
-from bleak_retry_connector import establish_connection
+from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
 from .const import (
     DEFAULT_BLUETOOTH_TIMEOUT,
@@ -69,7 +69,7 @@ class SolemBleClient:
             return
         if self.ble_device is not None and self._client_factory is None:
             self._client = await establish_connection(
-                BleakClient,
+                BleakClientWithServiceCache,
                 self.ble_device,
                 self.address,
                 timeout=self.timeout,
