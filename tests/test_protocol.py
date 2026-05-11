@@ -52,6 +52,14 @@ def test_parse_single_station_status() -> None:
     assert status.raw == payload.hex()
 
 
+def test_parse_bl2ip_single_station_status_timer_from_trailing_position() -> None:
+    payload = bytes.fromhex("3210024200aaaaaa00024e131000001004aa")
+    status = parse_status_notification(payload)
+    assert status.mode is SolemMode.SINGLE_STATION_ACTIVE
+    assert status.active is True
+    assert status.timer_remaining == 1194
+
+
 def test_parse_idle_status() -> None:
     payload = bytes.fromhex("321002400000000000000000000000000000")
     status = parse_status_notification(payload)

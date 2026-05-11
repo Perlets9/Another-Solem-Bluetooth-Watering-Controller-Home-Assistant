@@ -18,10 +18,12 @@ from .const import (
     CONF_DEFAULT_DURATION,
     CONF_NAME,
     CONF_POLL_INTERVAL,
+    CONF_POLLING_ENABLED,
     CONF_STATION_COUNT,
     DEFAULT_BLUETOOTH_TIMEOUT,
     DEFAULT_DURATION,
     DEFAULT_POLL_INTERVAL,
+    DEFAULT_POLLING_ENABLED,
     DOMAIN,
     MAX_DURATION,
     MIN_BLUETOOTH_TIMEOUT,
@@ -78,6 +80,7 @@ class SolemConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_NAME: title,
                 CONF_STATION_COUNT: int(user_input[CONF_STATION_COUNT]),
                 CONF_DEFAULT_DURATION: user_input[CONF_DEFAULT_DURATION],
+                CONF_POLLING_ENABLED: user_input[CONF_POLLING_ENABLED],
                 CONF_POLL_INTERVAL: user_input[CONF_POLL_INTERVAL],
                 CONF_BLUETOOTH_TIMEOUT: user_input[CONF_BLUETOOTH_TIMEOUT],
             }
@@ -101,6 +104,9 @@ class SolemConfigFlow(ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Required(CONF_DEFAULT_DURATION, default=DEFAULT_DURATION): vol.All(
                     vol.Coerce(int), vol.Range(min=MIN_DURATION, max=MAX_DURATION)
+                ),
+                vol.Required(CONF_POLLING_ENABLED, default=DEFAULT_POLLING_ENABLED): selector(
+                    {"boolean": {}}
                 ),
                 vol.Required(CONF_POLL_INTERVAL, default=DEFAULT_POLL_INTERVAL): vol.All(
                     vol.Coerce(int), vol.Range(min=MIN_POLL_INTERVAL)
@@ -131,6 +137,10 @@ class SolemOptionsFlow(OptionsFlow):
                     CONF_DEFAULT_DURATION,
                     default=current.get(CONF_DEFAULT_DURATION, DEFAULT_DURATION),
                 ): vol.All(vol.Coerce(int), vol.Range(min=MIN_DURATION, max=MAX_DURATION)),
+                vol.Required(
+                    CONF_POLLING_ENABLED,
+                    default=current.get(CONF_POLLING_ENABLED, DEFAULT_POLLING_ENABLED),
+                ): selector({"boolean": {}}),
                 vol.Required(
                     CONF_POLL_INTERVAL,
                     default=current.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),

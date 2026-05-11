@@ -30,11 +30,17 @@ class RuntimeData:
 type SolemConfigEntry = ConfigEntry[RuntimeData]
 
 
+async def _async_reload_entry(hass: HomeAssistant, entry: SolemConfigEntry) -> None:
+    """Reload the integration when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: SolemConfigEntry) -> bool:
     """Set up the integration from a config entry."""
     coordinator = SolemCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = RuntimeData(coordinator=coordinator)
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

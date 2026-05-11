@@ -61,6 +61,16 @@ def stop_command() -> bytes:
     return bytes.fromhex("31051500ff0000")
 
 
+def _parse_timer_remaining(data: bytes) -> int:
+    """Parse known BL-IP timer positions from a status packet."""
+    candidates = []
+    if len(data) >= 15:
+        candidates.append(struct.unpack(">H", data[13:15])[0])
+    if len(data) >= 18:
+        candidates.append(struct.unpack(">H", data[16:18])[0])
+    return next((timer for timer in candidates if timer > 0), 0)
+
+
 def parse_status_notification(data: bytes) -> SolemStatus:
     """Parse the first status notification packet returned by the controller."""
     if len(data) < 15 or data[2] != 0x02:
@@ -73,6 +83,6 @@ def parse_status_notification(data: bytes) -> SolemStatus:
         0x02: SolemMode.PROGRAMMED_OFF,
     }.get(data[3], SolemMode.UNKNOWN)
 
-    timer_remaining = struct.unpack(">H", data[13:15])[0]
+    timer_remaining = _parse_timer_remaining(data)
     active = mode in {SolemMode.ALL_STATIONS_ACTIVE, SolemMode.SINGLE_STATION_ACTIVE}
     return SolemStatus(mode, active, timer_remaining, data.hex())

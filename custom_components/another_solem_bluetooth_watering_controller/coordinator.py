@@ -15,10 +15,12 @@ from .const import (
     CONF_BLUETOOTH_TIMEOUT,
     CONF_DEFAULT_DURATION,
     CONF_POLL_INTERVAL,
+    CONF_POLLING_ENABLED,
     CONF_STATION_COUNT,
     DEFAULT_BLUETOOTH_TIMEOUT,
     DEFAULT_DURATION,
     DEFAULT_POLL_INTERVAL,
+    DEFAULT_POLLING_ENABLED,
     DOMAIN,
 )
 from .protocol import (
@@ -30,6 +32,13 @@ from .protocol import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def polling_update_interval(config: dict) -> timedelta | None:
+    """Return the coordinator update interval from config/options data."""
+    if not config.get(CONF_POLLING_ENABLED, DEFAULT_POLLING_ENABLED):
+        return None
+    return timedelta(seconds=int(config.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)))
 
 
 class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
@@ -50,14 +59,12 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
         )
         self.client = SolemBleClient(self.address, timeout=timeout)
         self.active_station: int | None = None
-        poll_interval = int(
-            entry.options.get(CONF_POLL_INTERVAL, entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL))
-        )
+        current_config = {**entry.data, **entry.options}
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN}-{self.address}",
-            update_interval=timedelta(seconds=poll_interval),
+            update_interval=polling_update_interval(current_config),
             always_update=False,
         )
 
@@ -114,3 +121,7 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
         await self._async_send_command(stop_command(), "stop SOLEM watering")
         self.active_station = None
         await self.async_request_refresh()
+
+    async def async_reset_connection(self) -> None:
+        """Reset the local BLE client connection."""
+        await self.client.disconnect()

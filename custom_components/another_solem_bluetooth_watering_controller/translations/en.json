@@ -8,6 +8,7 @@
           "address": "Bluetooth device",
           "station_count": "Number of stations",
           "default_duration": "Default watering duration",
+          "polling_enabled": "Enable status polling",
           "poll_interval": "Status polling interval",
           "bluetooth_timeout": "Bluetooth timeout"
         }
@@ -28,6 +29,7 @@
         "title": "SOLEM BL-IP options",
         "data": {
           "default_duration": "Default watering duration",
+          "polling_enabled": "Enable status polling",
           "poll_interval": "Status polling interval",
           "bluetooth_timeout": "Bluetooth timeout"
         }
