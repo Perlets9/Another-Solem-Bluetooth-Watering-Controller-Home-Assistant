@@ -21,6 +21,7 @@ async def async_setup_entry(
     async_add_entities(
         [
             StopButton(coordinator),
+            RefreshStatusButton(coordinator),
             ResetBluetoothConnectionButton(coordinator),
         ]
     )
@@ -36,6 +37,19 @@ class StopButton(SolemEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_stop()
+
+
+class RefreshStatusButton(SolemEntity, ButtonEntity):
+    """Refresh the controller status on demand."""
+
+    _attr_name = "Refresh Status"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "refresh-status")
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_refresh_status()
 
 
 class ResetBluetoothConnectionButton(SolemEntity, ButtonEntity):

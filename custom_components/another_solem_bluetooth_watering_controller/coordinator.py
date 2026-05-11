@@ -144,6 +144,19 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
         await self._async_send_command(stop_command(), "stop SOLEM watering")
         self.active_station = None
 
+    async def async_refresh_status(self) -> None:
+        """Manually refresh the controller status through the BLE operation queue."""
+        self._manual_command_pending = True
+        try:
+            async with self._ble_operation_lock:
+                try:
+                    status = await self._async_read_status()
+                except Exception as err:
+                    raise HomeAssistantError(f"Unable to refresh SOLEM status: {err}") from err
+                self.async_set_updated_data(status)
+        finally:
+            self._manual_command_pending = False
+
     async def async_reset_connection(self) -> None:
         """Reset the local BLE client connection."""
         await self.client.disconnect()

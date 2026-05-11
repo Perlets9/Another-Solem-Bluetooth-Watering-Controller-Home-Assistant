@@ -23,16 +23,17 @@ class FakeClient:
     def __init__(self) -> None:
         self.commands: list[bytes] = []
         self.reads = 0
+        self.status = SolemStatus(SolemMode.IDLE, False, 0, "read")
 
     async def send_command(self, command: bytes) -> None:
         self.commands.append(command)
 
     async def read_status(self) -> SolemStatus:
         self.reads += 1
-        return SolemStatus(SolemMode.IDLE, False, 0, "read")
+        return self.status
 
 
-def _coordinator(default_duration: int = 20) -> SolemCoordinator:
+def _coordinator(default_duration: int = 20, ble_device_available: bool = True) -> SolemCoordinator:
     coordinator = SolemCoordinator.__new__(SolemCoordinator)
     coordinator.default_duration = default_duration
     coordinator.active_station = None
@@ -40,7 +41,10 @@ def _coordinator(default_duration: int = 20) -> SolemCoordinator:
     coordinator.data = SolemStatus(SolemMode.IDLE, False, 0, "initial")
     coordinator._ble_operation_lock = asyncio.Lock()
     coordinator._manual_command_pending = False
-    coordinator._async_set_latest_ble_device = MethodType(lambda self: True, coordinator)
+    coordinator._async_set_latest_ble_device = MethodType(
+        lambda self: ble_device_available,
+        coordinator,
+    )
     coordinator.async_set_updated_data = MethodType(
         lambda self, data: (_ for _ in ()).throw(
             AssertionError("manual commands must not update assumed state locally")
@@ -103,3 +107,35 @@ async def test_manual_command_waiting_for_poll_blocks_new_polling() -> None:
     coordinator._ble_operation_lock.release()
     await stop_task
     assert coordinator._manual_command_pending is False
+
+
+@pytest.mark.asyncio
+async def test_refresh_status_reads_real_status_and_updates_coordinator_data() -> None:
+    coordinator = _coordinator()
+    refreshed_status = SolemStatus(SolemMode.SINGLE_STATION_ACTIVE, True, 1194, "read")
+    coordinator.client.status = refreshed_status
+    updates: list[SolemStatus] = []
+
+    def _record_update(self, data):
+        updates.append(data)
+        self.data = data
+
+    coordinator.async_set_updated_data = MethodType(_record_update, coordinator)
+
+    await coordinator.async_refresh_status()
+
+    assert coordinator.client.reads == 1
+    assert updates == [refreshed_status]
+    assert coordinator.data == refreshed_status
+    assert coordinator._manual_command_pending is False
+
+
+@pytest.mark.asyncio
+async def test_refresh_status_clears_pending_flag_when_device_is_unavailable() -> None:
+    coordinator = _coordinator(ble_device_available=False)
+
+    with pytest.raises(Exception, match="Unable to refresh SOLEM status"):
+        await coordinator.async_refresh_status()
+
+    assert coordinator._manual_command_pending is False
+    assert coordinator.client.reads == 0
