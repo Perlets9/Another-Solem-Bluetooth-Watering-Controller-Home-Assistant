@@ -1,0 +1,24 @@
+[project]
+name = "another-solem-bluetooth-watering-controller"
+version = "0.1.0"
+description = "Minimal Home Assistant custom integration for SOLEM BL-IP Bluetooth watering controllers."
+requires-python = ">=3.14"
+dependencies = [
+  "bleak",
+  "homeassistant",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "ruff",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"

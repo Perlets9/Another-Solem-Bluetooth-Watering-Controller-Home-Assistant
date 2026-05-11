@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add SOLEM BL-IP controller",
+        "description": "Select a discovered SOLEM BL-IP Bluetooth watering controller.",
+        "data": {
+          "address": "Bluetooth device",
+          "station_count": "Number of stations",
+          "default_duration": "Default watering duration",
+          "poll_interval": "Status polling interval",
+          "bluetooth_timeout": "Bluetooth timeout"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the controller.",
+      "no_devices": "No SOLEM BL-IP devices were found.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This controller is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SOLEM BL-IP options",
+        "data": {
+          "default_duration": "Default watering duration",
+          "poll_interval": "Status polling interval",
+          "bluetooth_timeout": "Bluetooth timeout"
+        }
+      }
+    }
+  }
+}
