@@ -6,7 +6,6 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.components.bluetooth import async_discovered_service_info
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers.selector import selector
@@ -56,10 +55,12 @@ class SolemConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Return the options flow."""
-        return SolemOptionsFlow(config_entry)
+        return SolemOptionsFlow()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the user step."""
+        from homeassistant.components.bluetooth import async_discovered_service_info
+
         errors: dict[str, str] = {}
         device_options = _solem_device_options(async_discovered_service_info(self.hass, True))
 
@@ -121,9 +122,6 @@ class SolemConfigFlow(ConfigFlow, domain=DOMAIN):
 
 class SolemOptionsFlow(OptionsFlow):
     """Handle options flow."""
-
-    def __init__(self, config_entry) -> None:
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage integration options."""

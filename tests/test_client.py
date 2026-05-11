@@ -118,18 +118,28 @@ async def test_connect_uses_service_cache_client_for_ha_resolved_devices(monkeyp
     fake_client = FakeBleakClient()
     fake_device = FakeBleDevice("C8:B9:61:D5:AA:7E")
     calls = []
+    stale_closed_addresses = []
 
     async def fake_establish_connection(client_class, device, name, **kwargs):
         calls.append((client_class, device, name, kwargs))
         fake_client.is_connected = True
         return fake_client
 
+    async def fake_close_stale_connections_by_address(address):
+        stale_closed_addresses.append(address)
+
     monkeypatch.setattr(client_module, "establish_connection", fake_establish_connection)
+    monkeypatch.setattr(
+        client_module,
+        "close_stale_connections_by_address",
+        fake_close_stale_connections_by_address,
+    )
 
     client = SolemBleClient("C8:B9:61:D5:AA:7E", ble_device=cast(Any, fake_device))
 
     await client.connect()
 
+    assert stale_closed_addresses == ["C8:B9:61:D5:AA:7E"]
     assert calls == [
         (
             client_module.BleakClientWithServiceCache,
