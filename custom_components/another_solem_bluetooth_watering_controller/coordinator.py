@@ -22,6 +22,7 @@ from .const import (
     DOMAIN,
 )
 from .protocol import (
+    SolemMode,
     SolemStatus,
     build_all_stations_command,
     build_station_command,
@@ -48,6 +49,7 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
             )
         )
         self.client = SolemBleClient(self.address, timeout=timeout)
+        self.active_station: int | None = None
         poll_interval = int(
             entry.options.get(CONF_POLL_INTERVAL, entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL))
         )
@@ -70,7 +72,10 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
         try:
             if not self._async_set_latest_ble_device():
                 raise UpdateFailed("SOLEM device is not currently available via Home Assistant Bluetooth")
-            return await self.client.read_status()
+            status = await self.client.read_status()
+            if status.mode is not SolemMode.SINGLE_STATION_ACTIVE:
+                self.active_station = None
+            return status
         except UpdateFailed:
             raise
         except Exception as err:
@@ -80,6 +85,7 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
         """Start one station for the configured duration."""
         if not self._async_set_latest_ble_device():
             raise HomeAssistantError("SOLEM device is not currently available via Home Assistant Bluetooth")
+        self.active_station = station
         await self.client.send_command(build_station_command(station, self.default_duration))
         await self.async_request_refresh()
 
@@ -87,6 +93,7 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
         """Start all stations for the configured duration."""
         if not self._async_set_latest_ble_device():
             raise HomeAssistantError("SOLEM device is not currently available via Home Assistant Bluetooth")
+        self.active_station = None
         await self.client.send_command(build_all_stations_command(self.default_duration))
         await self.async_request_refresh()
 
@@ -94,5 +101,6 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
         """Stop manual watering."""
         if not self._async_set_latest_ble_device():
             raise HomeAssistantError("SOLEM device is not currently available via Home Assistant Bluetooth")
+        self.active_station = None
         await self.client.send_command(stop_command())
         await self.async_request_refresh()

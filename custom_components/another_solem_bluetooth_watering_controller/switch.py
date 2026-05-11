@@ -36,7 +36,11 @@ class StationSwitch(SolemEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        return self.coordinator.data is not None and self.coordinator.data.mode is SolemMode.SINGLE_STATION_ACTIVE
+        return (
+            self.coordinator.data is not None
+            and self.coordinator.data.mode is SolemMode.SINGLE_STATION_ACTIVE
+            and self.coordinator.active_station == self.station
+        )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self.coordinator.async_start_station(self.station)
