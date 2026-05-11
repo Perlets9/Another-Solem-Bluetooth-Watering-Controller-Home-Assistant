@@ -42,7 +42,7 @@ def polling_update_interval(config: dict) -> timedelta | None:
     return timedelta(seconds=int(config.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)))
 
 
-class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
+class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
     """Poll status and send manual commands to the SOLEM controller."""
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
@@ -79,7 +79,7 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
         self.client.set_ble_device(ble_device)
         return ble_device is not None
 
-    async def _async_update_data(self) -> SolemStatus:
+    async def _async_update_data(self) -> SolemStatus | None:
         if self._manual_command_pending:
             if self.data is not None:
                 return self.data
@@ -91,7 +91,11 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
                     return self.data
                 raise UpdateFailed("Skipping SOLEM polling while a manual command is pending")
 
-            return await self._async_read_status()
+            try:
+                return await self._async_read_status()
+            except UpdateFailed as err:
+                _LOGGER.debug("SOLEM status unavailable during polling: %s", err)
+                return None
 
     async def _async_read_status(self) -> SolemStatus:
         """Read status from the controller."""
@@ -152,7 +156,8 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus]):
                 try:
                     status = await self._async_read_status()
                 except Exception as err:
-                    raise HomeAssistantError(f"Unable to refresh SOLEM status: {err}") from err
+                    _LOGGER.debug("SOLEM status unavailable during manual refresh: %s", err)
+                    status = None
                 self.async_set_updated_data(status)
         finally:
             self._manual_command_pending = False

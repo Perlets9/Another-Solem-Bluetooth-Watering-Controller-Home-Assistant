@@ -7,7 +7,7 @@ from custom_components.another_solem_bluetooth_watering_controller.protocol impo
     SolemMode,
     SolemStatus,
 )
-from custom_components.another_solem_bluetooth_watering_controller.switch import StationSwitch
+from custom_components.another_solem_bluetooth_watering_controller.switch import AllStationsSwitch, StationSwitch
 
 
 def _coordinator(active_station: int | None):
@@ -31,3 +31,11 @@ def test_external_single_station_status_does_not_turn_on_every_station_switch() 
 
     assert StationSwitch(coordinator, 1).is_on is False
     assert StationSwitch(coordinator, 2).is_on is False
+
+
+def test_switches_are_unknown_when_status_has_not_been_read() -> None:
+    coordinator = _coordinator(active_station=None)
+    coordinator.data = None
+
+    assert StationSwitch(coordinator, 1).is_on is None
+    assert AllStationsSwitch(coordinator).is_on is None

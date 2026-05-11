@@ -35,10 +35,11 @@ class StationSwitch(SolemEntity, SwitchEntity):
         self._attr_name = f"Station {station}"
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
+        if self.coordinator.data is None:
+            return None
         return (
-            self.coordinator.data is not None
-            and self.coordinator.data.mode is SolemMode.SINGLE_STATION_ACTIVE
+            self.coordinator.data.mode is SolemMode.SINGLE_STATION_ACTIVE
             and self.coordinator.active_station == self.station
         )
 
@@ -57,8 +58,10 @@ class AllStationsSwitch(SolemEntity, SwitchEntity):
         self._attr_name = "All Stations"
 
     @property
-    def is_on(self) -> bool:
-        return self.coordinator.data is not None and self.coordinator.data.mode is SolemMode.ALL_STATIONS_ACTIVE
+    def is_on(self) -> bool | None:
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.mode is SolemMode.ALL_STATIONS_ACTIVE
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self.coordinator.async_start_all()
