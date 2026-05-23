@@ -1,14 +1,21 @@
 {
   "domain": "another_solem_bluetooth_watering_controller",
   "name": "Another Solem Bluetooth Watering Controller",
-  "codeowners": ["@Perlets9"],
+  "codeowners": [
+    "@Perlets9"
+  ],
   "config_flow": true,
-  "dependencies": ["bluetooth_adapters"],
+  "dependencies": [
+    "bluetooth_adapters"
+  ],
   "documentation": "https://github.com/Perlets9/Another-Solem-Bluetooth-Watering-Controller-Home-Assistant",
   "integration_type": "device",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/Perlets9/Another-Solem-Bluetooth-Watering-Controller-Home-Assistant/issues",
-  "requirements": ["bleak", "bleak-retry-connector"],
+  "requirements": [
+    "bleak",
+    "bleak-retry-connector"
+  ],
   "single_config_entry": false,
-  "version": "0.1.0"
+  "version": "1.0.0"
 }
