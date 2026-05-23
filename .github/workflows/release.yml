@@ -1,0 +1,121 @@
+name: Release
+
+# Manually publish a HACS-compatible GitHub release. The workflow:
+#   1. Validates the requested semver and ensures the tag does not exist.
+#   2. Bumps `manifest.json` so its `version` field matches the new tag
+#      (HACS rejects releases where these differ).
+#   3. Commits the bump, creates the tag, and publishes a GitHub Release
+#      with auto-generated release notes.
+#
+# Trigger from the GitHub UI: Actions -> Release -> Run workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, semver without leading v (e.g. 1.0.0 or 1.2.0-beta.1)"
+        required: true
+        type: string
+      prerelease:
+        description: "Publish as pre-release"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # Gate the release on a green test suite: if ruff or pytest fail we abort
+  # before bumping the manifest, tagging or publishing anything on GitHub.
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff
+        run: ruff check custom_components tests
+
+      - name: Pytest
+        run: pytest
+
+  release:
+    name: Publish release
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      MANIFEST_PATH: custom_components/another_solem_bluetooth_watering_controller/manifest.json
+      TAG: v${{ inputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate version is semver
+        run: |
+          if [[ ! "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "::error::Version '${{ inputs.version }}' is not valid semver (expected e.g. 1.0.0 or 1.0.0-beta.1)."
+            exit 1
+          fi
+
+      - name: Ensure tag does not already exist
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::Tag ${TAG} already exists."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "${TAG}" >/dev/null 2>&1; then
+            echo "::error::Tag ${TAG} already exists on origin."
+            exit 1
+          fi
+
+      - name: Bump manifest.json version
+        run: |
+          jq --arg v "${{ inputs.version }}" '.version = $v' "${MANIFEST_PATH}" > "${MANIFEST_PATH}.tmp"
+          mv "${MANIFEST_PATH}.tmp" "${MANIFEST_PATH}"
+          echo "Updated ${MANIFEST_PATH}:"
+          cat "${MANIFEST_PATH}"
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${MANIFEST_PATH}"
+          if git diff --cached --quiet; then
+            echo "manifest.json already at ${{ inputs.version }}, skipping commit."
+          else
+            git commit -m "chore(release): ${TAG}"
+            git push origin HEAD
+          fi
+
+      - name: Create and push tag
+        run: |
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "${TAG}"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARGS=("${TAG}" --title "${TAG}" --generate-notes --target "$(git rev-parse HEAD)")
+          if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+            ARGS+=(--prerelease)
+          fi
+          gh release create "${ARGS[@]}"

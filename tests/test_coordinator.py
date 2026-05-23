@@ -7,11 +7,15 @@ from types import MethodType
 import pytest
 
 from custom_components.another_solem_bluetooth_watering_controller.const import (
+    CONF_ACTIVE_POLL_INTERVAL,
+    CONF_IDLE_POLL_INTERVAL,
     CONF_POLL_INTERVAL,
     CONF_POLLING_ENABLED,
 )
 from custom_components.another_solem_bluetooth_watering_controller.coordinator import (
     SolemCoordinator,
+    active_poll_interval,
+    idle_poll_interval,
     polling_update_interval,
 )
 from custom_components.another_solem_bluetooth_watering_controller.protocol import SolemMode, SolemStatus
@@ -33,7 +37,12 @@ class FakeClient:
         return self.status
 
 
-def _coordinator(default_duration: int = 20, ble_device_available: bool = True) -> SolemCoordinator:
+def _coordinator(
+    default_duration: int = 20,
+    ble_device_available: bool = True,
+    idle_interval: timedelta | None = timedelta(seconds=600),
+    active_interval: timedelta = timedelta(seconds=30),
+) -> SolemCoordinator:
     coordinator = SolemCoordinator.__new__(SolemCoordinator)
     coordinator.default_duration = default_duration
     coordinator.active_station = None
@@ -41,21 +50,17 @@ def _coordinator(default_duration: int = 20, ble_device_available: bool = True) 
     coordinator.data = SolemStatus(SolemMode.IDLE, False, 0, "initial")
     coordinator._ble_operation_lock = asyncio.Lock()
     coordinator._manual_command_pending = False
+    coordinator._idle_interval = idle_interval
+    coordinator._active_interval = active_interval
+    coordinator.update_interval = idle_interval
     coordinator._async_set_latest_ble_device = MethodType(
         lambda self: ble_device_available,
         coordinator,
     )
     coordinator.async_set_updated_data = MethodType(
-        lambda self, data: (_ for _ in ()).throw(
-            AssertionError("manual commands must not update assumed state locally")
-        ),
+        lambda self, data: None,
         coordinator,
     )
-
-    async def _unexpected_refresh(self):
-        raise AssertionError("manual commands must not request an immediate BLE refresh")
-
-    coordinator.async_request_refresh = MethodType(_unexpected_refresh, coordinator)
     return coordinator
 
 
@@ -70,25 +75,78 @@ def _record_coordinator_updates(coordinator: SolemCoordinator) -> list[SolemStat
     return updates
 
 
-def test_polling_update_interval_uses_configured_interval_when_enabled() -> None:
-    assert polling_update_interval({CONF_POLLING_ENABLED: True, CONF_POLL_INTERVAL: 15}) == timedelta(
-        seconds=15
-    )
+# ---------------------------------------------------------------------- #
+# Polling interval helpers
+# ---------------------------------------------------------------------- #
 
 
-def test_polling_update_interval_is_none_when_disabled() -> None:
-    assert polling_update_interval({CONF_POLLING_ENABLED: False, CONF_POLL_INTERVAL: 15}) is None
+def test_idle_poll_interval_uses_new_idle_setting_when_present() -> None:
+    interval = idle_poll_interval({CONF_POLLING_ENABLED: True, CONF_IDLE_POLL_INTERVAL: 300})
+    assert interval == timedelta(seconds=300)
+
+
+def test_idle_poll_interval_falls_back_to_legacy_poll_interval() -> None:
+    """Old config entries (CONF_POLL_INTERVAL only) must keep working unchanged."""
+    interval = idle_poll_interval({CONF_POLLING_ENABLED: True, CONF_POLL_INTERVAL: 45})
+    assert interval == timedelta(seconds=45)
+
+
+def test_idle_poll_interval_is_none_when_disabled() -> None:
+    assert idle_poll_interval({CONF_POLLING_ENABLED: False}) is None
+
+
+def test_polling_update_interval_alias_returns_idle_interval() -> None:
+    assert polling_update_interval(
+        {CONF_POLLING_ENABLED: True, CONF_IDLE_POLL_INTERVAL: 600}
+    ) == timedelta(seconds=600)
+
+
+def test_active_poll_interval_uses_default_when_missing() -> None:
+    assert active_poll_interval({}) == timedelta(seconds=30)
+
+
+def test_active_poll_interval_uses_configured_value() -> None:
+    assert active_poll_interval({CONF_ACTIVE_POLL_INTERVAL: 15}) == timedelta(seconds=15)
+
+
+# ---------------------------------------------------------------------- #
+# Commands: post-command refresh and adaptive interval
+# ---------------------------------------------------------------------- #
 
 
 @pytest.mark.asyncio
-async def test_start_station_sends_command_without_assuming_state_or_refreshing() -> None:
+async def test_start_station_refreshes_state_from_controller() -> None:
     coordinator = _coordinator(default_duration=20)
+    refreshed = SolemStatus(SolemMode.SINGLE_STATION_ACTIVE, True, 1200, "post-cmd")
+    coordinator.client.status = refreshed
+    updates = _record_coordinator_updates(coordinator)
 
     await coordinator.async_start_station(2)
 
-    assert coordinator.active_station == 2
-    assert coordinator.data == SolemStatus(SolemMode.IDLE, False, 0, "initial")
     assert coordinator.client.commands == [bytes.fromhex("310512020004b0")]
+    assert coordinator.client.reads == 1
+    assert updates == [refreshed]
+    # Active station preserved because the post-command status confirms
+    # SINGLE_STATION_ACTIVE; UI switches no longer wait for next poll.
+    assert coordinator.active_station == 2
+    # Adaptive polling speeds up while watering.
+    assert coordinator.update_interval == timedelta(seconds=30)
+
+
+@pytest.mark.asyncio
+async def test_stop_refreshes_state_and_slows_polling_back_down() -> None:
+    coordinator = _coordinator()
+    coordinator.update_interval = timedelta(seconds=30)
+    coordinator.active_station = 1
+    coordinator.client.status = SolemStatus(SolemMode.IDLE, False, 0, "post-stop")
+    updates = _record_coordinator_updates(coordinator)
+
+    await coordinator.async_stop()
+
+    assert coordinator.client.commands == [bytes.fromhex("31051500ff0000")]
+    assert coordinator.active_station is None
+    assert updates and updates[-1].mode is SolemMode.IDLE
+    assert coordinator.update_interval == timedelta(seconds=600)
 
 
 @pytest.mark.asyncio
@@ -110,6 +168,29 @@ async def test_polling_marks_status_unknown_when_device_is_unavailable() -> None
 
     assert status is None
     assert coordinator.client.reads == 0
+
+
+@pytest.mark.asyncio
+async def test_polling_switches_to_active_interval_when_watering() -> None:
+    coordinator = _coordinator()
+    coordinator.client.status = SolemStatus(
+        SolemMode.SINGLE_STATION_ACTIVE, True, 600, "active"
+    )
+
+    await coordinator._async_update_data()
+
+    assert coordinator.update_interval == timedelta(seconds=30)
+
+
+@pytest.mark.asyncio
+async def test_polling_returns_to_idle_interval_when_done() -> None:
+    coordinator = _coordinator()
+    coordinator.update_interval = timedelta(seconds=30)
+    coordinator.client.status = SolemStatus(SolemMode.IDLE, False, 0, "idle")
+
+    await coordinator._async_update_data()
+
+    assert coordinator.update_interval == timedelta(seconds=600)
 
 
 @pytest.mark.asyncio

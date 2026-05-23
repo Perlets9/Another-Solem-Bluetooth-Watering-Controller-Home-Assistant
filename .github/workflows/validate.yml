@@ -1,0 +1,29 @@
+name: Validate
+
+# Standard HACS + Home Assistant integration validation. Catches manifest,
+# hacs.json and brand issues before a release goes out (which is exactly the
+# sort of thing that makes HACS refuse to install a release).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  hassfest:
+    name: Hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration

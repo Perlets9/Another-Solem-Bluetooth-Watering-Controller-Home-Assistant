@@ -12,22 +12,31 @@ from homeassistant.helpers.selector import selector
 
 from .client import is_solem_device_name
 from .const import (
+    CONF_ACTIVE_POLL_INTERVAL,
     CONF_ADDRESS,
     CONF_BLUETOOTH_TIMEOUT,
+    CONF_CONNECTION_IDLE_TIMEOUT,
     CONF_DEFAULT_DURATION,
+    CONF_IDLE_POLL_INTERVAL,
+    CONF_KEEP_CONNECTION,
     CONF_NAME,
     CONF_POLL_INTERVAL,
     CONF_POLLING_ENABLED,
     CONF_STATION_COUNT,
+    DEFAULT_ACTIVE_POLL_INTERVAL,
     DEFAULT_BLUETOOTH_TIMEOUT,
+    DEFAULT_CONNECTION_IDLE_TIMEOUT,
     DEFAULT_DURATION,
-    DEFAULT_POLL_INTERVAL,
+    DEFAULT_IDLE_POLL_INTERVAL,
+    DEFAULT_KEEP_CONNECTION,
     DEFAULT_POLLING_ENABLED,
     DOMAIN,
     MAX_DURATION,
+    MIN_ACTIVE_POLL_INTERVAL,
     MIN_BLUETOOTH_TIMEOUT,
+    MIN_CONNECTION_IDLE_TIMEOUT,
     MIN_DURATION,
-    MIN_POLL_INTERVAL,
+    MIN_IDLE_POLL_INTERVAL,
     SUPPORTED_STATION_COUNTS,
 )
 
@@ -44,6 +53,20 @@ def _solem_device_options(service_infos) -> list[dict[str, str]]:
         {"value": address, "label": f"{name} ({address})"}
         for address, name in sorted(devices_by_address.items(), key=lambda item: item[1])
     ]
+
+
+def _migrate_legacy_idle_default(current: dict[str, Any]) -> int:
+    """Pick a sensible idle-poll default for entries upgraded from the old schema."""
+    if CONF_IDLE_POLL_INTERVAL in current:
+        return int(current[CONF_IDLE_POLL_INTERVAL])
+    if CONF_POLL_INTERVAL in current:
+        # The legacy setting was applied uniformly; preserve it as the idle
+        # cadence so behavior changes only after the user opts in.
+        try:
+            return int(current[CONF_POLL_INTERVAL])
+        except (TypeError, ValueError):
+            return DEFAULT_IDLE_POLL_INTERVAL
+    return DEFAULT_IDLE_POLL_INTERVAL
 
 
 class SolemConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -82,8 +105,11 @@ class SolemConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_STATION_COUNT: int(user_input[CONF_STATION_COUNT]),
                 CONF_DEFAULT_DURATION: user_input[CONF_DEFAULT_DURATION],
                 CONF_POLLING_ENABLED: user_input[CONF_POLLING_ENABLED],
-                CONF_POLL_INTERVAL: user_input[CONF_POLL_INTERVAL],
+                CONF_IDLE_POLL_INTERVAL: user_input[CONF_IDLE_POLL_INTERVAL],
+                CONF_ACTIVE_POLL_INTERVAL: user_input[CONF_ACTIVE_POLL_INTERVAL],
                 CONF_BLUETOOTH_TIMEOUT: user_input[CONF_BLUETOOTH_TIMEOUT],
+                CONF_KEEP_CONNECTION: user_input[CONF_KEEP_CONNECTION],
+                CONF_CONNECTION_IDLE_TIMEOUT: user_input[CONF_CONNECTION_IDLE_TIMEOUT],
             }
             return self.async_create_entry(title=title, data=data)
 
@@ -109,12 +135,21 @@ class SolemConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_POLLING_ENABLED, default=DEFAULT_POLLING_ENABLED): selector(
                     {"boolean": {}}
                 ),
-                vol.Required(CONF_POLL_INTERVAL, default=DEFAULT_POLL_INTERVAL): vol.All(
-                    vol.Coerce(int), vol.Range(min=MIN_POLL_INTERVAL)
-                ),
+                vol.Required(
+                    CONF_IDLE_POLL_INTERVAL, default=DEFAULT_IDLE_POLL_INTERVAL
+                ): vol.All(vol.Coerce(int), vol.Range(min=MIN_IDLE_POLL_INTERVAL)),
+                vol.Required(
+                    CONF_ACTIVE_POLL_INTERVAL, default=DEFAULT_ACTIVE_POLL_INTERVAL
+                ): vol.All(vol.Coerce(int), vol.Range(min=MIN_ACTIVE_POLL_INTERVAL)),
                 vol.Required(CONF_BLUETOOTH_TIMEOUT, default=DEFAULT_BLUETOOTH_TIMEOUT): vol.All(
                     vol.Coerce(int), vol.Range(min=MIN_BLUETOOTH_TIMEOUT)
                 ),
+                vol.Required(
+                    CONF_KEEP_CONNECTION, default=DEFAULT_KEEP_CONNECTION
+                ): selector({"boolean": {}}),
+                vol.Required(
+                    CONF_CONNECTION_IDLE_TIMEOUT, default=DEFAULT_CONNECTION_IDLE_TIMEOUT
+                ): vol.All(vol.Coerce(int), vol.Range(min=MIN_CONNECTION_IDLE_TIMEOUT)),
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
@@ -129,6 +164,7 @@ class SolemOptionsFlow(OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         current = {**self.config_entry.data, **self.config_entry.options}
+        idle_default = _migrate_legacy_idle_default(current)
         schema = vol.Schema(
             {
                 vol.Required(
@@ -140,13 +176,29 @@ class SolemOptionsFlow(OptionsFlow):
                     default=current.get(CONF_POLLING_ENABLED, DEFAULT_POLLING_ENABLED),
                 ): selector({"boolean": {}}),
                 vol.Required(
-                    CONF_POLL_INTERVAL,
-                    default=current.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
-                ): vol.All(vol.Coerce(int), vol.Range(min=MIN_POLL_INTERVAL)),
+                    CONF_IDLE_POLL_INTERVAL,
+                    default=idle_default,
+                ): vol.All(vol.Coerce(int), vol.Range(min=MIN_IDLE_POLL_INTERVAL)),
+                vol.Required(
+                    CONF_ACTIVE_POLL_INTERVAL,
+                    default=current.get(
+                        CONF_ACTIVE_POLL_INTERVAL, DEFAULT_ACTIVE_POLL_INTERVAL
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=MIN_ACTIVE_POLL_INTERVAL)),
                 vol.Required(
                     CONF_BLUETOOTH_TIMEOUT,
                     default=current.get(CONF_BLUETOOTH_TIMEOUT, DEFAULT_BLUETOOTH_TIMEOUT),
                 ): vol.All(vol.Coerce(int), vol.Range(min=MIN_BLUETOOTH_TIMEOUT)),
+                vol.Required(
+                    CONF_KEEP_CONNECTION,
+                    default=current.get(CONF_KEEP_CONNECTION, DEFAULT_KEEP_CONNECTION),
+                ): selector({"boolean": {}}),
+                vol.Required(
+                    CONF_CONNECTION_IDLE_TIMEOUT,
+                    default=current.get(
+                        CONF_CONNECTION_IDLE_TIMEOUT, DEFAULT_CONNECTION_IDLE_TIMEOUT
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=MIN_CONNECTION_IDLE_TIMEOUT)),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

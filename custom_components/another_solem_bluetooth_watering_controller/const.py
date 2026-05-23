@@ -17,18 +17,34 @@ CONF_NAME = "name"
 CONF_STATION_COUNT = "station_count"
 CONF_DEFAULT_DURATION = "default_duration"
 CONF_POLLING_ENABLED = "polling_enabled"
+# Legacy single poll interval; kept for backward compatibility with existing
+# config entries. New deployments use the adaptive idle/active pair below.
 CONF_POLL_INTERVAL = "poll_interval"
+CONF_IDLE_POLL_INTERVAL = "idle_poll_interval"
+CONF_ACTIVE_POLL_INTERVAL = "active_poll_interval"
 CONF_BLUETOOTH_TIMEOUT = "bluetooth_timeout"
+CONF_KEEP_CONNECTION = "keep_connection"
+CONF_CONNECTION_IDLE_TIMEOUT = "connection_idle_timeout"
 
 SUPPORTED_STATION_COUNTS = (1, 2, 4, 6)
 DEFAULT_DURATION = 10
 DEFAULT_POLLING_ENABLED = True
+# Legacy default; only used when migrating old config entries.
 DEFAULT_POLL_INTERVAL = 30
+# Adaptive polling defaults: poll often when actively watering, sparsely when
+# the controller is idle to save BLE bandwidth and device battery.
+DEFAULT_IDLE_POLL_INTERVAL = 600
+DEFAULT_ACTIVE_POLL_INTERVAL = 30
 DEFAULT_BLUETOOTH_TIMEOUT = 15
+DEFAULT_KEEP_CONNECTION = True
+DEFAULT_CONNECTION_IDLE_TIMEOUT = 60
 
 MIN_DURATION = 1
 MAX_DURATION = 720
 MIN_POLL_INTERVAL = 10
+MIN_IDLE_POLL_INTERVAL = 30
+MIN_ACTIVE_POLL_INTERVAL = 10
 MIN_BLUETOOTH_TIMEOUT = 5
+MIN_CONNECTION_IDLE_TIMEOUT = 0
 
-DEFAULT_UPDATE_INTERVAL = timedelta(seconds=DEFAULT_POLL_INTERVAL)
+DEFAULT_UPDATE_INTERVAL = timedelta(seconds=DEFAULT_IDLE_POLL_INTERVAL)
