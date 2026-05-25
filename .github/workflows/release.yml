@@ -111,11 +111,10 @@ jobs:
           git push origin "${TAG}"
 
       - name: Publish GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          ARGS=("${TAG}" --title "${TAG}" --generate-notes --target "$(git rev-parse HEAD)")
-          if [[ "${{ inputs.prerelease }}" == "true" ]]; then
-            ARGS+=(--prerelease)
-          fi
-          gh release create "${ARGS[@]}"
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.TAG }}
+          generate_release_notes: true
+          prerelease: ${{ inputs.prerelease }}
+          token: ${{ secrets.GITHUB_TOKEN }}
