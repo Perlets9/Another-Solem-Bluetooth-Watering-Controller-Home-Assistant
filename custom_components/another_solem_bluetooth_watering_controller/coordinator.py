@@ -6,7 +6,7 @@ import asyncio
 from datetime import timedelta
 import logging
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -115,6 +115,12 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
         self._manual_command_pending = False
         self._idle_interval = idle_poll_interval(current_config)
         self._active_interval = active_poll_interval(current_config)
+        # Cached BLEDevice updated from passive Bluetooth advertisements; used
+        # as a fallback when HA's manager momentarily forgets the device (the
+        # BL-IP advertises infrequently, so async_ble_device_from_address can
+        # return None even when a recent connection is still feasible).
+        self._cached_ble_device = None
+        self._cancel_bluetooth_listener = None
         super().__init__(
             hass,
             _LOGGER,
@@ -123,11 +129,74 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
             always_update=False,
         )
 
-    def _async_set_latest_ble_device(self) -> bool:
-        """Refresh the client target from Home Assistant's Bluetooth manager."""
-        from homeassistant.components.bluetooth import async_ble_device_from_address
+    def async_start_bluetooth_listener(self) -> None:
+        """Subscribe to advertisements for our address to keep a BLEDevice cached."""
+        if self._cancel_bluetooth_listener is not None:
+            return
+        from homeassistant.components.bluetooth import (
+            BluetoothScanningMode,
+            async_ble_device_from_address,
+            async_last_service_info,
+            async_register_callback,
+        )
+        from homeassistant.components.bluetooth.match import BluetoothCallbackMatcher
 
-        ble_device = async_ble_device_from_address(self.hass, self.address, connectable=True)
+        # Seed the cache from whatever HA already knows so we don't have to
+        # wait for the next advertisement to attempt a first connection.
+        info = async_last_service_info(self.hass, self.address, connectable=True)
+        if info is not None:
+            self._cached_ble_device = info.device
+        else:
+            self._cached_ble_device = async_ble_device_from_address(
+                self.hass, self.address, connectable=True
+            )
+
+        self._cancel_bluetooth_listener = async_register_callback(
+            self.hass,
+            self._async_handle_bluetooth_event,
+            BluetoothCallbackMatcher(address=self.address, connectable=True),
+            BluetoothScanningMode.PASSIVE,
+        )
+
+    @callback
+    def _async_handle_bluetooth_event(self, service_info, change) -> None:
+        """Cache the freshest BLEDevice we've seen for this address."""
+        if service_info.connectable:
+            self._cached_ble_device = service_info.device
+
+    def async_stop_bluetooth_listener(self) -> None:
+        """Cancel the advertisement subscription on unload."""
+        if self._cancel_bluetooth_listener is not None:
+            self._cancel_bluetooth_listener()
+            self._cancel_bluetooth_listener = None
+
+    def _async_set_latest_ble_device(self) -> bool:
+        """Refresh the client target, falling back to the cached BLEDevice.
+
+        ``async_ble_device_from_address`` only returns a device that HA has
+        seen advertising recently. Battery-powered BL-IP controllers can be
+        silent for minutes at a time, so we also keep our own cache populated
+        via the passive callback registered in ``async_start_bluetooth_listener``.
+        Trying with a slightly stale BLEDevice is far better than refusing the
+        operation: bleak-retry-connector will reconnect through whichever
+        proxy/adapter last knew about the device.
+        """
+        from homeassistant.components.bluetooth import (
+            async_ble_device_from_address,
+            async_last_service_info,
+        )
+
+        ble_device = async_ble_device_from_address(
+            self.hass, self.address, connectable=True
+        )
+        if ble_device is None:
+            info = async_last_service_info(self.hass, self.address, connectable=True)
+            if info is not None:
+                ble_device = info.device
+        if ble_device is None:
+            ble_device = self._cached_ble_device
+        else:
+            self._cached_ble_device = ble_device
         self.client.set_ble_device(ble_device)
         return ble_device is not None
 
@@ -175,7 +244,9 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
         """Read status from the controller."""
         try:
             if not self._async_set_latest_ble_device():
-                raise UpdateFailed("SOLEM device is not currently available via Home Assistant Bluetooth")
+                raise UpdateFailed(
+                    "SOLEM controller has not been seen by Home Assistant Bluetooth yet"
+                )
             status = await self.client.read_status()
             if status.mode is not SolemMode.SINGLE_STATION_ACTIVE:
                 self.active_station = None
@@ -198,7 +269,9 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
             async with self._ble_operation_lock:
                 if not self._async_set_latest_ble_device():
                     raise HomeAssistantError(
-                        "SOLEM device is not currently available via Home Assistant Bluetooth"
+                        "SOLEM controller has not been seen by Home Assistant Bluetooth "
+                        "recently. Ensure the BL-IP is powered and in range of a Bluetooth "
+                        "adapter or ESPHome proxy."
                     )
                 try:
                     await self.client.send_command(command)

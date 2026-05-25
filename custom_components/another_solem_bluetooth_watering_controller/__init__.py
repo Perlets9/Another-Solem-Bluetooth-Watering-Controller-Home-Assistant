@@ -38,10 +38,24 @@ async def _async_reload_entry(hass: HomeAssistant, entry: SolemConfigEntry) -> N
 async def async_setup_entry(hass: HomeAssistant, entry: SolemConfigEntry) -> bool:
     """Set up the integration from a config entry."""
     coordinator = SolemCoordinator(hass, entry)
+
+    # Start listening for the BL-IP's advertisements *before* the first
+    # refresh so the cached BLEDevice is populated and the first connect
+    # attempt has the best chance of succeeding even if HA's manager has
+    # not seen the device recently.
+    coordinator.async_start_bluetooth_listener()
+    entry.async_on_unload(coordinator.async_stop_bluetooth_listener)
+
     entry.runtime_data = RuntimeData(coordinator=coordinator)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Best-effort initial refresh: avoids waiting for the (potentially long)
+    # idle poll interval before any state is shown. ``async_refresh`` never
+    # raises, so a failure here will simply leave entities as Unknown until
+    # the next attempt.
+    await coordinator.async_refresh()
     return True
 
 
@@ -49,5 +63,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: SolemConfigEntry) -> bo
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
+        coordinator = hass.data[DOMAIN].pop(entry.entry_id, None)
+        if coordinator is not None:
+            await coordinator.client.disconnect()
     return unload_ok
