@@ -335,5 +335,12 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
             self._manual_command_pending = False
 
     async def async_reset_connection(self) -> None:
-        """Reset the local BLE client connection."""
-        await self.client.disconnect()
+        """Reset the local BLE client connection.
+
+        Disconnects, asks the OS/proxy to drop any stale connections for the
+        address, and invalidates the cached BLEDevice so the next poll picks
+        up a fresh one from HA Bluetooth.
+        """
+        await self.client.reset()
+        self._cached_ble_device = None
+        _LOGGER.debug("SOLEM BLE connection reset by user request")

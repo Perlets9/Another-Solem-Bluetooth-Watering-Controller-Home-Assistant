@@ -132,6 +132,22 @@ class SolemBleClient:
         self._cancel_idle_disconnect()
         await self._safe_disconnect()
 
+    async def reset(self) -> None:
+        """Forcefully tear down the BLE session and clear OS-level stale handles.
+
+        Stronger than :meth:`disconnect`: also asks bleak-retry-connector to
+        clean up any lingering connections held by the OS / Bluetooth proxy
+        for this address, so the next operation can rebuild the session from
+        a known-clean state. Useful as a diagnostic recovery button.
+        """
+        async with self._operation_lock:
+            self._cancel_idle_disconnect()
+            await self._safe_disconnect()
+            try:
+                await close_stale_connections_by_address(self.address)
+            except Exception as err:  # noqa: BLE001 - best-effort cleanup
+                _LOGGER.debug("close_stale_connections_by_address failed: %s", err)
+
     async def _safe_disconnect(self) -> None:
         """Disconnect best-effort, swallowing transport errors."""
         client = self._client
