@@ -168,6 +168,10 @@ Home Assistant 2025.6 added a Bluetooth connection graph. Use it to confirm whet
 
 The BL-IP does not send spontaneous status updates. The integration polls status by sending the non-intrusive ON/status command and parsing the notification response.
 
+### Use a recent ESPHome Bluetooth Proxy
+
+If you reach the BL-IP via an ESPHome Bluetooth Proxy, keep the proxy firmware up to date. **ESPHome 2025.11.0** cut BLE event processing latency from 0-16 ms to ~12 µs and ships a coexistence fix (`status=0x85`/133) that keeps `ESP_COEX_PREFER_BT` held for the full lifetime of any active BLE connection. Combined with this integration's persistent-but-short BLE session, that translates into noticeably fewer spurious disconnects and faster command/notification round-trips on the BL-IP. No configuration change is required on the integration side.
+
 ## Future TODOs
 
 - [ ] Complete support for 1, 2, 4, and 6 station variants, including entity naming and hardware tests for each controller type.
