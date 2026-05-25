@@ -37,7 +37,12 @@ DEFAULT_IDLE_POLL_INTERVAL = 600
 DEFAULT_ACTIVE_POLL_INTERVAL = 30
 DEFAULT_BLUETOOTH_TIMEOUT = 15
 DEFAULT_KEEP_CONNECTION = True
-DEFAULT_CONNECTION_IDLE_TIMEOUT = 60
+# Short keepalive: long enough to share a connection across back-to-back
+# user actions (e.g. tap switch then check sensor), short enough that idle
+# polling does not loiter on the BL-IP's radio. Keeping a battery-powered
+# peripheral in "connected" state is far more expensive than reconnecting
+# with bleak-retry-connector's service cache, so we err on the short side.
+DEFAULT_CONNECTION_IDLE_TIMEOUT = 15
 
 MIN_DURATION = 1
 MAX_DURATION = 720

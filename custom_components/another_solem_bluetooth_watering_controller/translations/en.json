@@ -3,14 +3,28 @@
     "step": {
       "user": {
         "title": "Add SOLEM BL-IP controller",
-        "description": "Select a discovered SOLEM BL-IP Bluetooth watering controller.",
+        "description": "Select a discovered SOLEM BL-IP Bluetooth watering controller and configure how Home Assistant should talk to it.",
         "data": {
           "address": "Bluetooth device",
           "station_count": "Number of stations",
-          "default_duration": "Default watering duration",
+          "default_duration": "Default watering duration (minutes)",
           "polling_enabled": "Enable status polling",
-          "poll_interval": "Status polling interval",
-          "bluetooth_timeout": "Bluetooth timeout"
+          "idle_poll_interval": "Idle polling interval (seconds)",
+          "active_poll_interval": "Active polling interval (seconds)",
+          "bluetooth_timeout": "Bluetooth timeout (seconds)",
+          "keep_connection": "Keep BLE connection between operations",
+          "connection_idle_timeout": "Connection idle timeout (seconds)"
+        },
+        "data_description": {
+          "address": "The Bluetooth address of your BL-IP. Only devices already advertising to Home Assistant appear here.",
+          "station_count": "How many physical zones your model controls (1, 2, 4 or 6).",
+          "default_duration": "Duration used by the station switches when you turn them on from the UI. Service calls can override this per-call.",
+          "polling_enabled": "Read the controller status periodically so sensors (timer remaining, irrigating, mode) stay live. Disable for maximum battery life: the state will only update after manual commands or pressing 'Refresh Status'.",
+          "idle_poll_interval": "How often to poll while the controller is idle (not watering). Longer is gentler on the battery. Default 600 = 10 minutes.",
+          "active_poll_interval": "How often to poll while watering, so the timer countdown stays accurate. Shorter values drain more battery during a session.",
+          "bluetooth_timeout": "Maximum time to wait for a BLE connect or notification before giving up. Increase if you reach the controller through a slow proxy.",
+          "keep_connection": "Reuse the BLE session across consecutive operations instead of reconnecting every time. Recommended on; the connection closes automatically after the idle timeout below.",
+          "connection_idle_timeout": "How long to keep the BLE connection open with no traffic. Short values (5-15s) save battery; longer values make back-to-back commands snappier."
         }
       }
     },
@@ -27,13 +41,56 @@
     "step": {
       "init": {
         "title": "SOLEM BL-IP options",
+        "description": "Tune polling cadence and Bluetooth behavior. See the integration README for three suggested presets (battery saver / balanced / responsive).",
         "data": {
-          "default_duration": "Default watering duration",
+          "default_duration": "Default watering duration (minutes)",
           "polling_enabled": "Enable status polling",
-          "poll_interval": "Status polling interval",
-          "bluetooth_timeout": "Bluetooth timeout"
+          "idle_poll_interval": "Idle polling interval (seconds)",
+          "active_poll_interval": "Active polling interval (seconds)",
+          "bluetooth_timeout": "Bluetooth timeout (seconds)",
+          "keep_connection": "Keep BLE connection between operations",
+          "connection_idle_timeout": "Connection idle timeout (seconds)"
+        },
+        "data_description": {
+          "default_duration": "Duration used by the station switches when you turn them on from the UI. Service calls can override this per-call.",
+          "polling_enabled": "Read the controller status periodically so sensors stay live. Disable for maximum battery life: state will only update after commands or pressing 'Refresh Status'.",
+          "idle_poll_interval": "How often to poll while the controller is idle. Longer is gentler on the battery. Default 600 = 10 minutes.",
+          "active_poll_interval": "How often to poll while watering, so the timer countdown stays accurate. Shorter values drain more battery during a session.",
+          "bluetooth_timeout": "Maximum time to wait for a BLE connect or notification. Increase if you reach the controller through a slow proxy.",
+          "keep_connection": "Reuse the BLE session across consecutive operations instead of reconnecting every time. The connection closes after the idle timeout below.",
+          "connection_idle_timeout": "How long to keep the BLE connection open with no traffic. Short values (5-15s) save battery; longer values make back-to-back commands snappier."
         }
       }
+    }
+  },
+  "services": {
+    "start_station": {
+      "name": "Start station",
+      "description": "Water a single station for the requested duration. Lets automations water each station for a different time without changing the global watering duration.",
+      "fields": {
+        "station": {
+          "name": "Station",
+          "description": "Station number to activate, between 1 and the controller's station count."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "Watering duration in minutes (1-720)."
+        }
+      }
+    },
+    "start_all_stations": {
+      "name": "Start all stations",
+      "description": "Run every station sequentially for the requested duration.",
+      "fields": {
+        "duration": {
+          "name": "Duration",
+          "description": "Watering duration per station in minutes (1-720)."
+        }
+      }
+    },
+    "stop": {
+      "name": "Stop watering",
+      "description": "Stop any manual watering currently running on the controller."
     }
   }
 }
