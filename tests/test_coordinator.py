@@ -134,6 +134,35 @@ async def test_start_station_refreshes_state_from_controller() -> None:
 
 
 @pytest.mark.asyncio
+async def test_start_station_with_explicit_duration_overrides_default() -> None:
+    """Services pass an explicit duration; the default_duration number is ignored."""
+    coordinator = _coordinator(default_duration=20)
+    coordinator.client.status = SolemStatus(
+        SolemMode.SINGLE_STATION_ACTIVE, True, 600, "post-cmd"
+    )
+    _record_coordinator_updates(coordinator)
+
+    # 10 minutes -> 600 seconds -> hex 0258 in the payload tail.
+    await coordinator.async_start_station(1, duration=10)
+
+    assert coordinator.client.commands == [bytes.fromhex("3105120100" + "0258")]
+
+
+@pytest.mark.asyncio
+async def test_start_all_with_explicit_duration_overrides_default() -> None:
+    coordinator = _coordinator(default_duration=20)
+    coordinator.client.status = SolemStatus(
+        SolemMode.ALL_STATIONS_ACTIVE, True, 900, "post-cmd"
+    )
+    _record_coordinator_updates(coordinator)
+
+    # 15 minutes -> 900 seconds -> hex 0384.
+    await coordinator.async_start_all(duration=15)
+
+    assert coordinator.client.commands == [bytes.fromhex("31051100000384")]
+
+
+@pytest.mark.asyncio
 async def test_stop_refreshes_state_and_slows_polling_back_down() -> None:
     coordinator = _coordinator()
     coordinator.update_interval = timedelta(seconds=30)

@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 
 from .coordinator import SolemCoordinator
 from .const import DOMAIN
+from .services import async_register_services, async_unregister_services
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
@@ -49,6 +50,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolemConfigEntry) -> boo
     entry.runtime_data = RuntimeData(coordinator=coordinator)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    # Services are domain-wide (one set for all SOLEM devices) so we register
+    # them once and never per-entry. Registration is idempotent.
+    async_register_services(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Best-effort initial refresh: avoids waiting for the (potentially long)
@@ -66,4 +70,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: SolemConfigEntry) -> bo
         coordinator = hass.data[DOMAIN].pop(entry.entry_id, None)
         if coordinator is not None:
             await coordinator.client.disconnect()
+        # Drop the domain-wide services when no integration entries remain.
+        if not hass.data[DOMAIN]:
+            async_unregister_services(hass)
     return unload_ok

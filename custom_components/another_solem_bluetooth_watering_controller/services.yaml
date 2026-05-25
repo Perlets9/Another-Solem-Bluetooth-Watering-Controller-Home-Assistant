@@ -1,0 +1,58 @@
+start_station:
+  name: Start station
+  description: >-
+    Start watering a single SOLEM BL-IP station for the given duration. Use
+    this in automations when different stations should run for different
+    amounts of time.
+  target:
+    device:
+      integration: another_solem_bluetooth_watering_controller
+  fields:
+    station:
+      name: Station
+      description: Station number to activate (1-based).
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 6
+          mode: box
+    duration:
+      name: Duration
+      description: Watering duration in minutes.
+      required: true
+      example: 10
+      selector:
+        number:
+          min: 1
+          max: 720
+          unit_of_measurement: min
+          mode: box
+
+start_all_stations:
+  name: Start all stations
+  description: >-
+    Run every station of the SOLEM BL-IP sequentially for the given duration.
+  target:
+    device:
+      integration: another_solem_bluetooth_watering_controller
+  fields:
+    duration:
+      name: Duration
+      description: Watering duration per station in minutes.
+      required: true
+      example: 10
+      selector:
+        number:
+          min: 1
+          max: 720
+          unit_of_measurement: min
+          mode: box
+
+stop:
+  name: Stop watering
+  description: Stop any manual watering currently running on the controller.
+  target:
+    device:
+      integration: another_solem_bluetooth_watering_controller

@@ -21,9 +21,16 @@ async def async_setup_entry(
 
 
 class DefaultDurationNumber(SolemEntity, NumberEntity):
-    """Default manual watering duration."""
+    """Duration used by the station switches when turned on.
 
-    _attr_name = "Default Duration"
+    The class name preserves the original ``default-duration`` unique_id so
+    existing installations keep their entity registry mapping. The user-
+    facing name is just ``Watering Duration`` because there is no
+    non-default override path: this is *the* duration used for every manual
+    start triggered from Home Assistant.
+    """
+
+    _attr_name = "Watering Duration"
     _attr_native_min_value = MIN_DURATION
     _attr_native_max_value = MAX_DURATION
     _attr_native_step = 1

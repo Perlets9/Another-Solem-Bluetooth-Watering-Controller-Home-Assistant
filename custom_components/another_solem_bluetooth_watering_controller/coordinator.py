@@ -294,24 +294,32 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
         finally:
             self._manual_command_pending = False
 
-    async def async_start_station(self, station: int) -> None:
-        """Start one station for the configured duration."""
+    async def async_start_station(self, station: int, duration: int | None = None) -> None:
+        """Start one station for ``duration`` minutes (defaults to the configured value).
+
+        Switches always omit ``duration`` and rely on the per-coordinator
+        default. Service calls pass ``duration`` explicitly so automations
+        can water each station for a different time without juggling the
+        global ``Watering Duration`` number.
+        """
+        minutes = self.default_duration if duration is None else int(duration)
         # Tentatively remember the commanded station so the post-command
-        # refresh below maps SINGLE_STATION_ACTIVE -> this station in the UI.
+        # refresh maps SINGLE_STATION_ACTIVE -> this station in the UI.
         self.active_station = station
         status = await self._async_send_command(
-            build_station_command(station, self.default_duration),
-            f"start SOLEM station {station}",
+            build_station_command(station, minutes),
+            f"start SOLEM station {station} for {minutes} min",
         )
         if status is not None and status.mode is not SolemMode.SINGLE_STATION_ACTIVE:
             self.active_station = None
 
-    async def async_start_all(self) -> None:
-        """Start all stations for the configured duration."""
+    async def async_start_all(self, duration: int | None = None) -> None:
+        """Start all stations for ``duration`` minutes (defaults to configured)."""
+        minutes = self.default_duration if duration is None else int(duration)
         self.active_station = None
         await self._async_send_command(
-            build_all_stations_command(self.default_duration),
-            "start all SOLEM stations",
+            build_all_stations_command(minutes),
+            f"start all SOLEM stations for {minutes} min",
         )
 
     async def async_stop(self) -> None:
