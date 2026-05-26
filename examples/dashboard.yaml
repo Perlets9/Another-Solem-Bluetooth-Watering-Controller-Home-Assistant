@@ -1,22 +1,26 @@
 # Example Lovelace dashboard for the SOLEM BL-IP integration.
 #
+# IMPORTANT: entity IDs depend on the device name you picked when adding
+# the integration. The examples below assume the default name slug
+# ``solem_bl_ip`` (object IDs follow ``<domain>.<device_slug>_<entity_slug>``).
+# Replace ``solem_bl_ip`` everywhere with your own slug.
+#
+# Example of the substitution:
+#   * Device named "Sprinkler BL2IP"  -> slug ``sprinkler_bl2ip``
+#     ``sensor.solem_bl_ip_status``  -> ``sensor.sprinkler_bl2ip_status``
+#     ``switch.solem_bl_ip_station_1`` -> ``switch.sprinkler_bl2ip_station_1``
+#
+# Notes on visibility:
+#   * ``battery`` and ``signal_strength`` ship as diagnostic entities and
+#     are DISABLED by default. Enable them from Settings -> Devices &
+#     Services -> SOLEM -> Entities before they appear here.
+#   * The "Program N Name/Frequency/..." sensors only have meaningful
+#     values once the integration has performed at least one program
+#     refresh -- press the "Refresh Programs" button or wait for the
+#     scheduled 6h refresh.
+#
 # Copy this YAML into a new dashboard view (Settings -> Dashboards ->
-# Edit dashboard -> raw YAML) and replace the entity IDs with the ones
-# your instance generated for your device. Entity IDs follow the pattern:
-#   <domain>.<device_slug>_<key>
-# For a device named "SOLEM BL-IP D5AA7E" you'd get
-# ``sensor.solem_bl_ip_d5aa7e_status`` etc.
-#
-# This dashboard exposes:
-#   * Current irrigation status + battery + RSSI
-#   * Quick actions (start each station with the configured default duration,
-#     start all stations, run a program, stop)
-#   * Last-watering history
-#   * Per-program summary (name, frequency, water budget, start times,
-#     station assignments)
-#
-# Add or remove rows to match the number of stations / programs your
-# controller advertises.
+# Edit dashboard -> raw YAML).
 
 title: SOLEM Irrigation
 views:
@@ -31,10 +35,11 @@ views:
             name: Status
           - entity: sensor.solem_bl_ip_time_remaining
             name: Time remaining
+          # Diagnostic entities: enable them in the device page first.
           - entity: sensor.solem_bl_ip_battery
             name: Battery
           - entity: sensor.solem_bl_ip_signal_strength
-            name: Signal (RSSI)
+            name: Signal strength
 
       - type: horizontal-stack
         cards:
@@ -79,7 +84,7 @@ views:
       - type: entities
         title: Last watering
         entities:
-          - entity: sensor.solem_bl_ip_last_watering_time
+          - entity: sensor.solem_bl_ip_last_watering
             name: When
           - entity: sensor.solem_bl_ip_last_watering_station
             name: Station
