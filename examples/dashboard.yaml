@@ -58,7 +58,7 @@ views:
             name: Stop
             icon: mdi:stop-circle
             tap_action:
-              action: press
+              action: toggle
 
       - type: horizontal-stack
         cards:
@@ -109,19 +109,29 @@ views:
         title: Program B
         entities:
           - entity: sensor.solem_bl_ip_program_b_name
+            name: Name
           - entity: sensor.solem_bl_ip_program_b_frequency
+            name: Frequency
           - entity: sensor.solem_bl_ip_program_b_water_budget
+            name: Water budget
           - entity: sensor.solem_bl_ip_program_b_start_times
+            name: Start times
           - entity: sensor.solem_bl_ip_program_b_stations
+            name: Stations
 
       - type: entities
         title: Program C
         entities:
           - entity: sensor.solem_bl_ip_program_c_name
+            name: Name
           - entity: sensor.solem_bl_ip_program_c_frequency
+            name: Frequency
           - entity: sensor.solem_bl_ip_program_c_water_budget
+            name: Water budget
           - entity: sensor.solem_bl_ip_program_c_start_times
+            name: Start times
           - entity: sensor.solem_bl_ip_program_c_stations
+            name: Stations
 
       - type: entities
         title: Diagnostics
