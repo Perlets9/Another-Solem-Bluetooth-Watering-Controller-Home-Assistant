@@ -73,3 +73,26 @@ def test_parse_ignores_non_status_packet() -> None:
     status = parse_status_notification(payload)
     assert status.mode is SolemMode.UNKNOWN
     assert status.active is False
+
+
+def test_parse_battery_level_from_real_capture() -> None:
+    # Modeled on a real MySolem snoop: byte 10 = 0x4d (77%) on a
+    # partially discharged controller.
+    payload = bytes.fromhex("321002400000000000004d17000000")
+    status = parse_status_notification(payload)
+    assert status.battery_level == 77
+
+
+def test_parse_battery_level_none_when_byte_zero() -> None:
+    # Synthetic payloads (and freshly-booted controllers reporting 0) are
+    # treated as "unknown" rather than misleadingly reporting 0%.
+    payload = bytes.fromhex("321002400000000000000000000000000000")
+    status = parse_status_notification(payload)
+    assert status.battery_level is None
+
+
+def test_parse_battery_level_none_when_out_of_range() -> None:
+    # Any value outside 1..100 is considered not a percentage.
+    payload = bytes.fromhex("321002400000000000008000000000")
+    status = parse_status_notification(payload)
+    assert status.battery_level is None

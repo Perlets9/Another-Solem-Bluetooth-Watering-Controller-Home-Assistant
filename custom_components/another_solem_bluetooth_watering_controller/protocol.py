@@ -33,6 +33,12 @@ class SolemStatus:
     active: bool
     timer_remaining: int
     raw: str
+    # Experimental: byte 10 of the status packet. Strong candidate for
+    # battery level (see reverse engineering notes). Observed values
+    # across captures 9 months apart went 88 -> 77, consistent with a 9V
+    # battery slowly discharging. Exposed as a sensor but disabled by
+    # default until long-term verification.
+    battery_level: int | None = None
 
 
 def _validate_duration(minutes: int) -> None:
@@ -85,4 +91,21 @@ def parse_status_notification(data: bytes) -> SolemStatus:
 
     timer_remaining = _parse_timer_remaining(data)
     active = mode in {SolemMode.ALL_STATIONS_ACTIVE, SolemMode.SINGLE_STATION_ACTIVE}
-    return SolemStatus(mode, active, timer_remaining, data.hex())
+    battery_level = _parse_battery_level(data)
+    return SolemStatus(mode, active, timer_remaining, data.hex(), battery_level)
+
+
+def _parse_battery_level(data: bytes) -> int | None:
+    """Best-effort extraction of the battery percentage candidate byte.
+
+    The 11th byte of status packet 1 has been observed to drift downward
+    over time on the same controller (88 -> 77 over ~9 months), which
+    matches a 9V battery slow discharge curve. Treat values outside the
+    0-100 range as "unknown" rather than guessing.
+    """
+    if len(data) < 11:
+        return None
+    raw = data[10]
+    if raw == 0 or raw > 100:
+        return None
+    return raw

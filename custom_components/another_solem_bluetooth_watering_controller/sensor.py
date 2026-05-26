@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
-from homeassistant.const import UnitOfTime
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import SolemConfigEntry
@@ -22,6 +27,7 @@ async def async_setup_entry(
         [
             StatusSensor(coordinator),
             TimeRemainingSensor(coordinator),
+            BatterySensor(coordinator),
             RawStatusSensor(coordinator),
         ]
     )
@@ -53,6 +59,31 @@ class TimeRemainingSensor(SolemEntity, SensorEntity):
     @property
     def native_value(self) -> int | None:
         return None if self.coordinator.data is None else self.coordinator.data.timer_remaining
+
+
+class BatterySensor(SolemEntity, SensorEntity):
+    """Experimental battery level sensor.
+
+    Reads the 11th byte of the controller's status packet, which empirical
+    evidence (cross-session captures) strongly suggests is a battery
+    percentage. Disabled by default until verified over a longer period.
+    """
+
+    _attr_name = "Battery"
+    _attr_device_class = SensorDeviceClass.BATTERY
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "battery")
+
+    @property
+    def native_value(self) -> int | None:
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.battery_level
 
 
 class RawStatusSensor(SolemEntity, SensorEntity):
