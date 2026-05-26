@@ -7,15 +7,21 @@ from custom_components.another_solem_bluetooth_watering_controller.protocol impo
     SolemMode,
     SolemStatus,
 )
-from custom_components.another_solem_bluetooth_watering_controller.switch import AllStationsSwitch, StationSwitch
+from custom_components.another_solem_bluetooth_watering_controller.switch import (
+    AllStationsSwitch,
+    RunProgramSwitch,
+    StationSwitch,
+)
 
 
-def _coordinator(active_station: int | None):
+def _coordinator(active_station: int | None, *, active_program: int | None = None):
     return SimpleNamespace(
         address="AA:BB:CC",
         data=SolemStatus(SolemMode.SINGLE_STATION_ACTIVE, True, 300, "raw"),
         active_station=active_station,
+        active_program=active_program,
         device_info=None,
+        programs=None,
         entry=SimpleNamespace(data={CONF_NAME: "SOLEM BL-IP"}),
     )
 
@@ -40,3 +46,25 @@ def test_switches_are_unknown_when_status_has_not_been_read() -> None:
 
     assert StationSwitch(coordinator, 1).is_on is None
     assert AllStationsSwitch(coordinator).is_on is None
+
+
+def test_run_program_switch_is_on_only_for_matching_active_program() -> None:
+    coordinator = _coordinator(active_station=None, active_program=2)
+
+    assert RunProgramSwitch(coordinator, 1).is_on is False
+    assert RunProgramSwitch(coordinator, 2).is_on is True
+    assert RunProgramSwitch(coordinator, 3).is_on is False
+
+
+def test_run_program_switch_is_off_when_controller_is_idle() -> None:
+    coordinator = _coordinator(active_station=None, active_program=2)
+    coordinator.data = SolemStatus(SolemMode.IDLE, False, 0, "raw")
+
+    assert RunProgramSwitch(coordinator, 2).is_on is False
+
+
+def test_run_program_switch_default_name_used_when_programs_unknown() -> None:
+    coordinator = _coordinator(active_station=None, active_program=None)
+
+    switch = RunProgramSwitch(coordinator, 1)
+    assert switch.name == "Program A"

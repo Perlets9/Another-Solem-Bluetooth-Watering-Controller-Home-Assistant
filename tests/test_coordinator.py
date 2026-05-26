@@ -46,6 +46,7 @@ def _coordinator(
     coordinator = SolemCoordinator.__new__(SolemCoordinator)
     coordinator.default_duration = default_duration
     coordinator.active_station = None
+    coordinator.active_program = None
     coordinator.client = FakeClient()
     coordinator.data = SolemStatus(SolemMode.IDLE, False, 0, "initial")
     coordinator._ble_operation_lock = asyncio.Lock()
@@ -357,3 +358,57 @@ def test_track_watering_handles_none_status() -> None:
     coordinator = _coordinator()
     coordinator._track_watering_transitions(None)
     assert coordinator.last_watering_time is None
+
+
+# ---------------------------------------------------------------------- #
+# Run-program API
+# ---------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_run_program_sends_expected_payload_and_marks_active() -> None:
+    coordinator = _coordinator()
+    coordinator.client.status = SolemStatus(
+        SolemMode.SINGLE_STATION_ACTIVE, True, 600, "active"
+    )
+
+    await coordinator.async_run_program(2)
+
+    assert coordinator.client.commands == [bytes.fromhex("31051402000000")]
+    assert coordinator.active_program == 2
+    assert coordinator.active_station is None
+
+
+@pytest.mark.asyncio
+async def test_run_program_clears_marker_when_controller_stays_idle() -> None:
+    coordinator = _coordinator()
+    coordinator.client.status = SolemStatus(SolemMode.IDLE, False, 0, "idle")
+
+    await coordinator.async_run_program(1)
+
+    assert coordinator.active_program is None
+
+
+@pytest.mark.asyncio
+async def test_stop_clears_active_program_marker() -> None:
+    coordinator = _coordinator()
+    coordinator.active_program = 3
+    coordinator.client.status = SolemStatus(SolemMode.IDLE, False, 0, "idle")
+
+    await coordinator.async_stop()
+
+    assert coordinator.active_program is None
+
+
+@pytest.mark.asyncio
+async def test_start_station_clears_active_program_marker() -> None:
+    coordinator = _coordinator()
+    coordinator.active_program = 2
+    coordinator.client.status = SolemStatus(
+        SolemMode.SINGLE_STATION_ACTIVE, True, 600, "active"
+    )
+
+    await coordinator.async_start_station(1)
+
+    assert coordinator.active_program is None
+    assert coordinator.active_station == 1

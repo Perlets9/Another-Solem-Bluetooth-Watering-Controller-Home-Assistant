@@ -7,6 +7,7 @@ from custom_components.another_solem_bluetooth_watering_controller.protocol impo
     STATUS_COMMAND,
     SolemMode,
     build_all_stations_command,
+    build_run_program_command,
     build_station_command,
     parse_device_info,
     parse_status_notification,
@@ -45,6 +46,20 @@ def test_duration_bounds(minutes: int) -> None:
 def test_station_bounds(station: int) -> None:
     with pytest.raises(ValueError):
         build_station_command(station, 5)
+
+
+@pytest.mark.parametrize(
+    "program,expected_hex",
+    [(1, "31051401000000"), (2, "31051402000000"), (3, "31051403000000")],
+)
+def test_build_run_program_command(program: int, expected_hex: str) -> None:
+    assert build_run_program_command(program).hex() == expected_hex
+
+
+@pytest.mark.parametrize("program", [0, 4, -1])
+def test_run_program_bounds(program: int) -> None:
+    with pytest.raises(ValueError):
+        build_run_program_command(program)
 
 
 def test_parse_single_station_status() -> None:

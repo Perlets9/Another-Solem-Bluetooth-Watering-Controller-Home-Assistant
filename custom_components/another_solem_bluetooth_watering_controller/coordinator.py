@@ -38,6 +38,7 @@ from .protocol import (
     SolemMode,
     SolemStatus,
     build_all_stations_command,
+    build_run_program_command,
     build_station_command,
     stop_command,
 )
@@ -114,6 +115,10 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
             idle_timeout=idle_timeout,
         )
         self.active_station: int | None = None
+        # Program currently being executed via "Run Program" (1..3). Reset
+        # to None whenever a manual station/all-stations command or a stop
+        # is issued, so the dedicated switch correctly turns off.
+        self.active_program: int | None = None
         self._ble_operation_lock = asyncio.Lock()
         self._manual_command_pending = False
         self._idle_interval = idle_poll_interval(current_config)
@@ -383,6 +388,7 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
         # Tentatively remember the commanded station so the post-command
         # refresh maps SINGLE_STATION_ACTIVE -> this station in the UI.
         self.active_station = station
+        self.active_program = None
         status = await self._async_send_command(
             build_station_command(station, minutes),
             f"start SOLEM station {station} for {minutes} min",
@@ -394,15 +400,36 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
         """Start all stations for ``duration`` minutes (defaults to configured)."""
         minutes = self.default_duration if duration is None else int(duration)
         self.active_station = None
+        self.active_program = None
         await self._async_send_command(
             build_all_stations_command(minutes),
             f"start all SOLEM stations for {minutes} min",
         )
 
+    async def async_run_program(self, program: int) -> None:
+        """Start the given configured program on demand.
+
+        Mirrors MySolem's "Run program" button. The controller will run the
+        program's stations one after the other, honoring the per-station
+        durations stored on the device itself; we don't need to pass any
+        timing here.
+        """
+        self.active_station = None
+        self.active_program = int(program)
+        status = await self._async_send_command(
+            build_run_program_command(program),
+            f"run SOLEM program {program}",
+        )
+        if status is not None and not status.active:
+            # If the controller reports back idle, the program likely had no
+            # stations assigned (or finished immediately). Clear the marker.
+            self.active_program = None
+
     async def async_stop(self) -> None:
         """Stop manual watering."""
         await self._async_send_command(stop_command(), "stop SOLEM watering")
         self.active_station = None
+        self.active_program = None
 
     async def async_refresh_status(self) -> None:
         """Manually refresh the controller status through the BLE operation queue."""

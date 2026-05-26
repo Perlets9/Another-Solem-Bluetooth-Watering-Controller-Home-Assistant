@@ -20,6 +20,11 @@ MIN_DURATION = 1
 MAX_DURATION = 720
 MIN_STATION = 1
 MAX_STATION = 6
+# MySolem exposes 3 programs (A, B, C). The firmware reserves more slots
+# but only the first three are user-addressable from the app's "Run program"
+# button. We accept the same range here.
+MIN_PROGRAM = 1
+MAX_PROGRAM = 3
 
 
 class SolemMode(StrEnum):
@@ -72,6 +77,20 @@ def build_all_stations_command(minutes: int) -> bytes:
 def stop_command() -> bytes:
     """Build the stop manual watering command."""
     return bytes.fromhex("31051500ff0000")
+
+
+def build_run_program_command(program: int) -> bytes:
+    """Build the "run program N on demand" command.
+
+    Decoded from snoop capture run 2 (see SNOOP-2026-05-25-run2.md): the
+    MySolem app sends ``31 05 14 [N] 00 00 00`` where ``N`` is 1 for
+    Program A, 2 for Program B, 3 for Program C.
+    """
+    if program < MIN_PROGRAM or program > MAX_PROGRAM:
+        raise ValueError(
+            f"Program must be between {MIN_PROGRAM} and {MAX_PROGRAM}"
+        )
+    return struct.pack(">HBBBBB", 0x3105, 0x14, program, 0x00, 0x00, 0x00)
 
 
 def _parse_timer_remaining(data: bytes) -> int:

@@ -10,7 +10,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import SolemConfigEntry
 from .entity import SolemEntity
-from .protocol import SolemMode
+from .protocol import MAX_PROGRAM, MIN_PROGRAM, SolemMode
+
+_PROGRAM_DEFAULT_NAMES = {1: "Program A", 2: "Program B", 3: "Program C"}
 
 
 async def async_setup_entry(
@@ -20,8 +22,15 @@ async def async_setup_entry(
 ) -> None:
     """Set up switches."""
     coordinator = entry.runtime_data.coordinator
-    entities = [StationSwitch(coordinator, station) for station in range(1, coordinator.station_count + 1)]
+    entities: list[SwitchEntity] = [
+        StationSwitch(coordinator, station)
+        for station in range(1, coordinator.station_count + 1)
+    ]
     entities.append(AllStationsSwitch(coordinator))
+    entities.extend(
+        RunProgramSwitch(coordinator, program)
+        for program in range(MIN_PROGRAM, MAX_PROGRAM + 1)
+    )
     async_add_entities(entities)
 
 
@@ -65,6 +74,44 @@ class AllStationsSwitch(SolemEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self.coordinator.async_start_all()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.async_stop()
+
+
+class RunProgramSwitch(SolemEntity, SwitchEntity):
+    """Switch reflecting whether the matching configured program is running.
+
+    The controller's status doesn't tell us *which* program is executing,
+    only that a station is active; we rely on the locally tracked
+    ``coordinator.active_program`` to drive ``is_on``.
+    """
+
+    def __init__(self, coordinator, program: int) -> None:
+        super().__init__(coordinator, f"run-program-{program}-switch")
+        self.program = program
+        self._attr_translation_key = "run_program"
+        self._attr_entity_registry_enabled_default = False
+
+    @property
+    def name(self) -> str:
+        programs = getattr(self.coordinator, "programs", None)
+        if programs and 0 <= self.program - 1 < len(programs):
+            label = programs[self.program - 1].name
+            if label:
+                return label
+        return _PROGRAM_DEFAULT_NAMES.get(self.program, f"Program {self.program}")
+
+    @property
+    def is_on(self) -> bool | None:
+        if self.coordinator.data is None:
+            return None
+        if not self.coordinator.data.active:
+            return False
+        return getattr(self.coordinator, "active_program", None) == self.program
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.async_run_program(self.program)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self.coordinator.async_stop()

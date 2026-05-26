@@ -18,6 +18,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN, MAX_DURATION, MIN_DURATION
+from .protocol import MAX_PROGRAM, MIN_PROGRAM
 
 if TYPE_CHECKING:
     from .coordinator import SolemCoordinator
@@ -27,9 +28,11 @@ _LOGGER = logging.getLogger(__name__)
 SERVICE_START_STATION = "start_station"
 SERVICE_START_ALL_STATIONS = "start_all_stations"
 SERVICE_STOP = "stop"
+SERVICE_RUN_PROGRAM = "run_program"
 
 ATTR_STATION = "station"
 ATTR_DURATION = "duration"
+ATTR_PROGRAM = "program"
 
 # Stations are validated against the protocol's hardcoded 1..6 range, not
 # against ``coordinator.station_count``: that check is per-coordinator and
@@ -59,6 +62,15 @@ _START_ALL_SCHEMA = vol.Schema(
 _STOP_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_DEVICE_ID): _DEVICE_IDS_SCHEMA,
+    }
+)
+
+_PROGRAM_SCHEMA = vol.All(vol.Coerce(int), vol.Range(min=MIN_PROGRAM, max=MAX_PROGRAM))
+
+_RUN_PROGRAM_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_DEVICE_ID): _DEVICE_IDS_SCHEMA,
+        vol.Required(ATTR_PROGRAM): _PROGRAM_SCHEMA,
     }
 )
 
@@ -117,6 +129,11 @@ def async_register_services(hass: HomeAssistant) -> None:
         for coordinator in _coordinators_for_devices(hass, call.data[ATTR_DEVICE_ID]):
             await coordinator.async_stop()
 
+    async def _handle_run_program(call: ServiceCall) -> None:
+        program = call.data[ATTR_PROGRAM]
+        for coordinator in _coordinators_for_devices(hass, call.data[ATTR_DEVICE_ID]):
+            await coordinator.async_run_program(program)
+
     hass.services.async_register(
         DOMAIN, SERVICE_START_STATION, _handle_start_station, schema=_START_STATION_SCHEMA
     )
@@ -126,10 +143,18 @@ def async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_STOP, _handle_stop, schema=_STOP_SCHEMA
     )
+    hass.services.async_register(
+        DOMAIN, SERVICE_RUN_PROGRAM, _handle_run_program, schema=_RUN_PROGRAM_SCHEMA
+    )
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
     """Remove integration services. Called when the last entry is unloaded."""
-    for service in (SERVICE_START_STATION, SERVICE_START_ALL_STATIONS, SERVICE_STOP):
+    for service in (
+        SERVICE_START_STATION,
+        SERVICE_START_ALL_STATIONS,
+        SERVICE_STOP,
+        SERVICE_RUN_PROGRAM,
+    ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)
