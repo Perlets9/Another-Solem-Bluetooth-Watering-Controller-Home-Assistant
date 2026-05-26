@@ -378,7 +378,7 @@ async def test_run_program_sends_expected_payload_and_marks_active() -> None:
 
     await coordinator.async_run_program(2)
 
-    assert coordinator.client.commands == [bytes.fromhex("31051402000000")]
+    assert coordinator.client.commands == [bytes.fromhex("31051400020000")]
     assert coordinator.active_program == 2
     assert coordinator.active_station is None
 

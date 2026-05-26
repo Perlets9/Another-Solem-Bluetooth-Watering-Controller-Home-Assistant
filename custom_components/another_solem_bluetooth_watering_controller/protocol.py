@@ -84,15 +84,23 @@ def stop_command() -> bytes:
 def build_run_program_command(program: int) -> bytes:
     """Build the "run program N on demand" command.
 
-    Decoded from snoop capture run 2 (see SNOOP-2026-05-25-run2.md): the
-    MySolem app sends ``31 05 14 [N] 00 00 00`` where ``N`` is 1 for
-    Program A, 2 for Program B, 3 for Program C.
+    The on-the-wire payload is ``31 05 14 00 0N 00 00`` where ``N`` is the
+    1-indexed program number (1=A, 2=B, 3=C). The same opcode layout is
+    documented in ``DISCOVERY.md`` of the reverse-engineering repo and is
+    what the working ``hacking/solem_bleak.py`` reference library has been
+    sending since the original Solem reverse engineering work (encoded as
+    ``struct.pack(">HBHH", 0x3105, 0x14, program, 0x0000)``).
+
+    Earlier versions of this function packed ``program`` into byte 3
+    instead of byte 4 -- following a mistranscribed example in
+    ``SNOOP-2026-05-25-run2.md`` -- and the controller silently ignored
+    the resulting frame. Keep the byte layout exactly as below.
     """
     if program < MIN_PROGRAM or program > MAX_PROGRAM:
         raise ValueError(
             f"Program must be between {MIN_PROGRAM} and {MAX_PROGRAM}"
         )
-    return struct.pack(">HBBBBB", 0x3105, 0x14, program, 0x00, 0x00, 0x00)
+    return struct.pack(">HBHH", 0x3105, 0x14, program, 0x0000)
 
 
 def _parse_timer_remaining(data: bytes) -> int:

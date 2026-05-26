@@ -50,7 +50,11 @@ def test_station_bounds(station: int) -> None:
 
 @pytest.mark.parametrize(
     "program,expected_hex",
-    [(1, "31051401000000"), (2, "31051402000000"), (3, "31051403000000")],
+    # On-the-wire layout: `31 05 14 00 0N 00 00` (program N at byte 4,
+    # BE16). Matches the canonical SOLEM reference implementation
+    # `hacking/solem_bleak.py` -- packing program at byte 3 makes the
+    # firmware silently drop the frame.
+    [(1, "31051400010000"), (2, "31051400020000"), (3, "31051400030000")],
 )
 def test_build_run_program_command(program: int, expected_hex: str) -> None:
     assert build_run_program_command(program).hex() == expected_hex
