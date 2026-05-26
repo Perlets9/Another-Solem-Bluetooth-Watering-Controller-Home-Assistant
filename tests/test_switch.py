@@ -15,6 +15,7 @@ def _coordinator(active_station: int | None):
         address="AA:BB:CC",
         data=SolemStatus(SolemMode.SINGLE_STATION_ACTIVE, True, 300, "raw"),
         active_station=active_station,
+        device_info=None,
         entry=SimpleNamespace(data={CONF_NAME: "SOLEM BL-IP"}),
     )
 

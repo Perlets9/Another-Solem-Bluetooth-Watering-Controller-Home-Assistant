@@ -12,7 +12,10 @@ from custom_components.another_solem_bluetooth_watering_controller.client import
     is_solem_device_name,
 )
 from custom_components.another_solem_bluetooth_watering_controller.const import WRITE_UUID
-from custom_components.another_solem_bluetooth_watering_controller.protocol import COMMIT_COMMAND
+from custom_components.another_solem_bluetooth_watering_controller.protocol import (
+    COMMIT_COMMAND,
+    STATUS_COMMAND,
+)
 
 
 class FakeBleakClient:
@@ -230,6 +233,34 @@ async def test_connect_closes_stale_connections_on_recovery(monkeypatch) -> None
     await client.connect(force_close_stale=True)
 
     assert stale_closed_addresses == ["C8:B9:61:D5:AA:7E"]
+
+
+@pytest.mark.asyncio
+async def test_read_status_writes_only_status_frame_no_redundant_commit() -> None:
+    """Status read should issue a single `3b 00` write (no doubled commit).
+
+    The historical code wrote `STATUS_COMMAND` followed by `COMMIT_COMMAND`,
+    which after the switch to `3b 00` would have meant sending the same
+    frame twice. The current flow issues `3b 00` exactly once.
+    """
+    fake = FakeBleakClient()
+
+    async def write_then_notify(uuid: str, data: bytes, response: bool = False) -> None:
+        fake.writes.append((uuid, data, response))
+        if data == STATUS_COMMAND and fake.notify_handler is not None:
+            packet = bytes.fromhex("3210024000000000000000000000000000")
+            fake.notify_handler("sender", packet)
+
+    fake.write_gatt_char = write_then_notify  # type: ignore[assignment]
+
+    client = _ephemeral_client(fake)
+
+    status = await client.read_status()
+
+    assert status.raw == "3210024000000000000000000000000000"
+    write_uuids_and_data = [(uuid, data) for uuid, data, _ in fake.writes]
+    assert write_uuids_and_data == [(WRITE_UUID, STATUS_COMMAND)]
+    assert STATUS_COMMAND == COMMIT_COMMAND  # safety: by design, same bytes
 
 
 @pytest.mark.asyncio

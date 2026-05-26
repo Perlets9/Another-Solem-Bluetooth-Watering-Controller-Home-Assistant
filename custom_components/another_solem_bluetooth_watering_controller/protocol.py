@@ -7,7 +7,14 @@ from enum import StrEnum
 import struct
 
 COMMIT_COMMAND = bytes.fromhex("3b00")
-STATUS_COMMAND = bytes.fromhex("3105a000010000")
+# Status / commit frame. Writing `3b 00` triggers a 3-packet status response
+# from the controller (same frame MySolem uses). It is also the commit frame
+# appended after `31 05 ...` action commands; that double role is intentional
+# and matches the controller firmware behavior.
+STATUS_COMMAND = bytes.fromhex("3b00")
+# Device info read: returns two notifications with opcode 0x10. Record 0x01
+# contains MAC + firmware bytes, record 0x00 contains the device name.
+DEVICE_INFO_COMMAND = bytes.fromhex("0f00")
 
 MIN_DURATION = 1
 MAX_DURATION = 720
@@ -93,6 +100,65 @@ def parse_status_notification(data: bytes) -> SolemStatus:
     active = mode in {SolemMode.ALL_STATIONS_ACTIVE, SolemMode.SINGLE_STATION_ACTIVE}
     battery_level = _parse_battery_level(data)
     return SolemStatus(mode, active, timer_remaining, data.hex(), battery_level)
+
+
+@dataclass(frozen=True)
+class SolemDeviceInfo:
+    """Identity information returned by the controller's `0x0f` request.
+
+    Parsed from the two `0x10` records emitted in response. The MAC and the
+    advertised device name are reliable across all five captures; the
+    firmware bytes are best-effort and may be ``None`` on devices that do
+    not embed them in the same position.
+    """
+
+    mac: str
+    device_name: str
+    model: str | None
+    firmware: str | None
+
+
+def parse_device_info(records: dict[int, bytes]) -> SolemDeviceInfo:
+    """Parse a `0x10` device-info dump (records indexed by `record_idx`).
+
+    Layout of each record payload (after stripping `[OPCODE] [LEN] [REC_IDX]`):
+
+    Record 0x01 (15 bytes payload after REC_IDX, total 16 incl. opcode header):
+        ``[MAC:6] [??:3] [FW_MAJOR:1] [FW_MINOR:1] [FW_PATCH:1] [??:2]``
+
+    Record 0x00 (15 bytes payload after REC_IDX):
+        ``[NAME_ASCII:15]`` -- null-terminated, e.g. ``"BL2IP-D5AA7E"``.
+
+    Empirically firmware "5.1.7" maps to bytes ``05 01 07`` in record 1 at
+    offsets 9..11 of the payload (see SNOOP-2026-05-25.md §3.1).
+    """
+    mac_record = records.get(0x01, b"")
+    name_record = records.get(0x00, b"")
+
+    if len(mac_record) >= 6:
+        mac = ":".join(f"{b:02X}" for b in mac_record[:6])
+    else:
+        mac = ""
+
+    firmware: str | None = None
+    if len(mac_record) >= 12:
+        major, minor, patch = mac_record[9], mac_record[10], mac_record[11]
+        if 0 < major < 100 and minor < 100 and patch < 100:
+            firmware = f"{major}.{minor}.{patch}"
+
+    device_name = name_record.rstrip(b"\x00").decode("ascii", errors="replace")
+    model = None
+    if device_name:
+        # "BL2IP-D5AA7E" -> model "BL2IP"
+        if "-" in device_name:
+            candidate = device_name.split("-", 1)[0]
+        else:
+            candidate = device_name
+        model = candidate or None
+
+    return SolemDeviceInfo(
+        mac=mac, device_name=device_name, model=model, firmware=firmware
+    )
 
 
 def _parse_battery_level(data: bytes) -> int | None:

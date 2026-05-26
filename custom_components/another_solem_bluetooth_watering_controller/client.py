@@ -24,7 +24,15 @@ from .const import (
     NOTIFY_UUID,
     WRITE_UUID,
 )
-from .protocol import COMMIT_COMMAND, STATUS_COMMAND, SolemStatus, parse_status_notification
+from .protocol import (
+    COMMIT_COMMAND,
+    DEVICE_INFO_COMMAND,
+    STATUS_COMMAND,
+    SolemDeviceInfo,
+    SolemStatus,
+    parse_device_info,
+    parse_status_notification,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -201,10 +209,21 @@ class SolemBleClient:
     # ------------------------------------------------------------------ #
 
     async def _write_command(self, command: bytes) -> None:
-        """Write a command and commit frame on an existing connection."""
+        """Write an action command followed by the mandatory commit frame.
+
+        Used for `0x31 0x05 ...` action commands (start station, stop,
+        run program, ...): the controller only applies them once it
+        receives the trailing `3b 00` commit. For status reads use
+        :meth:`_write_status_request` instead, since `3b 00` alone is the
+        status request itself and writing it twice is redundant.
+        """
         await self._client.write_gatt_char(WRITE_UUID, command, response=False)
         await asyncio.sleep(0.1)
         await self._client.write_gatt_char(WRITE_UUID, COMMIT_COMMAND, response=False)
+
+    async def _write_status_request(self) -> None:
+        """Write the bare `3b 00` status request frame (no commit needed)."""
+        await self._client.write_gatt_char(WRITE_UUID, STATUS_COMMAND, response=False)
 
     async def send_command(self, command: bytes) -> None:
         """Send a command followed by the mandatory commit frame."""
@@ -215,6 +234,59 @@ class SolemBleClient:
         """Poll the controller status using the non-intrusive ON command."""
         async with self._operation_lock:
             return await self._execute(self._do_read_status, op_name="read_status")
+
+    async def read_device_info(self) -> SolemDeviceInfo:
+        """Issue `0x0f 00` and parse the two `0x10` records that come back."""
+        async with self._operation_lock:
+            return await self._execute(
+                self._do_read_device_info, op_name="read_device_info"
+            )
+
+    async def _do_read_device_info(self) -> SolemDeviceInfo:
+        """Read device info and assemble a :class:`SolemDeviceInfo`.
+
+        Expects two notifications with opcode `0x10`, one per record index.
+        Records arrive in the order ``0x01`` then ``0x00`` (see snoop
+        captures), so we complete as soon as we have both, with a timeout
+        as a safety net for partial responses.
+        """
+        records: dict[int, bytes] = {}
+        done = asyncio.Event()
+
+        def _handler(_sender: str, data: bytes) -> None:
+            if len(data) < 4 or data[0] != 0x10:
+                return
+            length = data[1]
+            payload = data[2 : 2 + length]
+            if not payload:
+                return
+            record_idx = payload[0]
+            records[record_idx] = payload[1:]
+            if 0x00 in records and 0x01 in records:
+                done.set()
+
+        await self._client.start_notify(NOTIFY_UUID, _handler)
+        try:
+            await self._client.write_gatt_char(
+                WRITE_UUID, DEVICE_INFO_COMMAND, response=False
+            )
+            try:
+                await asyncio.wait_for(done.wait(), timeout=self.timeout)
+            except asyncio.TimeoutError:
+                # Partial responses are still useful (MAC alone is enough to
+                # populate DeviceInfo.connections), so we surface what we got
+                # rather than failing the whole setup.
+                _LOGGER.debug(
+                    "SOLEM device-info read incomplete (got records %s)",
+                    sorted(records),
+                )
+        finally:
+            try:
+                await self._client.stop_notify(NOTIFY_UUID)
+            except Exception as err:  # noqa: BLE001 - notify teardown is best-effort
+                _LOGGER.debug("Failed to stop SOLEM notifications cleanly: %s", err)
+
+        return parse_device_info(records)
 
     async def _do_read_status(self) -> SolemStatus:
         self._last_notification = None
@@ -227,7 +299,7 @@ class SolemBleClient:
 
         await self._client.start_notify(NOTIFY_UUID, _handler)
         try:
-            await self._write_command(STATUS_COMMAND)
+            await self._write_status_request()
             try:
                 await asyncio.wait_for(self._notification_event.wait(), timeout=self.timeout)
             except asyncio.TimeoutError as err:

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
+from collections.abc import Callable
+from datetime import datetime, timedelta
 import logging
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.util import dt as dt_util
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -32,6 +34,7 @@ from .const import (
     DOMAIN,
 )
 from .protocol import (
+    SolemDeviceInfo,
     SolemMode,
     SolemStatus,
     build_all_stations_command,
@@ -121,6 +124,26 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
         # return None even when a recent connection is still feasible).
         self._cached_ble_device = None
         self._cancel_bluetooth_listener = None
+        # Latest RSSI seen on a connectable advertisement. Updated by the
+        # passive Bluetooth listener and consumed by the RSSI sensor without
+        # going through the polling cycle.
+        self.rssi: int | None = None
+        # Listeners notified when passive Bluetooth-derived state (RSSI)
+        # changes, so dedicated entities can push updates without a poll.
+        self._bluetooth_state_listeners: set[Callable[[], None]] = set()
+        # Cached device identity (MAC, model, firmware). Read once after the
+        # first successful connection and reused by every entity's DeviceInfo
+        # block. ``None`` until populated; entities still render correctly
+        # with the defaults baked into entity.py in that case.
+        self.device_info: SolemDeviceInfo | None = None
+        # Last-watering tracking. ``_watering_started_at`` is set the moment
+        # we first see ``active=True`` in any status read; on the next
+        # ``active=False`` we close the cycle and publish the totals below.
+        self._watering_started_at: datetime | None = None
+        self._watering_station: int | None = None
+        self.last_watering_time: datetime | None = None
+        self.last_watering_station: int | None = None
+        self.last_watering_duration: int | None = None
         super().__init__(
             hass,
             _LOGGER,
@@ -146,6 +169,7 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
         info = async_last_service_info(self.hass, self.address, connectable=True)
         if info is not None:
             self._cached_ble_device = info.device
+            self._set_rssi(getattr(info, "rssi", None))
         else:
             self._cached_ble_device = async_ble_device_from_address(
                 self.hass, self.address, connectable=True
@@ -163,6 +187,30 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
         """Cache the freshest BLEDevice we've seen for this address."""
         if service_info.connectable:
             self._cached_ble_device = service_info.device
+            self._set_rssi(getattr(service_info, "rssi", None))
+
+    def _set_rssi(self, rssi: int | None) -> None:
+        """Update the cached RSSI and notify subscribers if it changed.
+
+        Notifications are emitted on every fresh advertisement (RSSI typically
+        varies on every packet), letting the dedicated sensor push updates
+        without going through the polling pipeline.
+        """
+        if rssi is None:
+            return
+        if rssi == self.rssi:
+            return
+        self.rssi = rssi
+        for listener in tuple(self._bluetooth_state_listeners):
+            try:
+                listener()
+            except Exception:  # noqa: BLE001 - listener errors must not break BT cb
+                _LOGGER.exception("SOLEM Bluetooth listener raised")
+
+    def async_add_bluetooth_state_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+        """Register a callback fired on passive Bluetooth state updates."""
+        self._bluetooth_state_listeners.add(listener)
+        return lambda: self._bluetooth_state_listeners.discard(listener)
 
     def async_stop_bluetooth_listener(self) -> None:
         """Cancel the advertisement subscription on unload."""
@@ -199,6 +247,33 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
             self._cached_ble_device = ble_device
         self.client.set_ble_device(ble_device)
         return ble_device is not None
+
+    def _track_watering_transitions(self, status: SolemStatus | None) -> None:
+        """Detect inactive->active and active->inactive transitions.
+
+        On the rising edge we remember when watering started and which
+        station was running; on the falling edge we publish the closed
+        cycle as ``last_watering_*`` so the dedicated sensors can render
+        it. Only "real" cycles get published (i.e. we ignore the falling
+        edge if we never saw a rising one, which would mean the controller
+        already finished before HA observed it).
+        """
+        if status is None:
+            return
+        if status.active:
+            if self._watering_started_at is None:
+                self._watering_started_at = dt_util.utcnow()
+            self._watering_station = self.active_station
+            return
+        if self._watering_started_at is None:
+            return
+        ended_at = dt_util.utcnow()
+        duration = max(int((ended_at - self._watering_started_at).total_seconds()), 0)
+        self.last_watering_time = ended_at
+        self.last_watering_station = self._watering_station
+        self.last_watering_duration = duration
+        self._watering_started_at = None
+        self._watering_station = None
 
     def _apply_adaptive_interval(self, status: SolemStatus | None) -> None:
         """Switch between active/idle polling cadence based on watering state.
@@ -237,6 +312,7 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
                 _LOGGER.debug("SOLEM status unavailable during polling: %s", err)
                 self._apply_adaptive_interval(None)
                 return None
+            self._track_watering_transitions(status)
             self._apply_adaptive_interval(status)
             return status
 
@@ -288,6 +364,7 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
                         "SOLEM status refresh after %s failed: %s", action, err
                     )
                     return None
+                self._track_watering_transitions(status)
                 self.async_set_updated_data(status)
                 self._apply_adaptive_interval(status)
                 return status
@@ -337,10 +414,36 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
                 except Exception as err:
                     _LOGGER.debug("SOLEM status unavailable during manual refresh: %s", err)
                     status = None
+                self._track_watering_transitions(status)
                 self.async_set_updated_data(status)
                 self._apply_adaptive_interval(status)
         finally:
             self._manual_command_pending = False
+
+    async def async_refresh_device_info(self) -> SolemDeviceInfo | None:
+        """Read device identity once, caching it on the coordinator.
+
+        Failure-tolerant: a missing device-info read must not block setup
+        (entities fall back to the static defaults in entity.py until the
+        controller becomes reachable). Skips the read if we already have
+        a populated cache.
+        """
+        if self.device_info is not None and self.device_info.mac:
+            return self.device_info
+        async with self._ble_operation_lock:
+            if not self._async_set_latest_ble_device():
+                _LOGGER.debug(
+                    "Skipping SOLEM device-info read: controller not in range yet"
+                )
+                return None
+            try:
+                info = await self.client.read_device_info()
+            except Exception as err:  # noqa: BLE001 - best-effort metadata
+                _LOGGER.debug("SOLEM device-info read failed: %s", err)
+                return None
+        if info.mac or info.device_name:
+            self.device_info = info
+        return self.device_info
 
     async def async_reset_connection(self) -> None:
         """Reset the local BLE client connection.

@@ -53,6 +53,14 @@ def _coordinator(
     coordinator._idle_interval = idle_interval
     coordinator._active_interval = active_interval
     coordinator.update_interval = idle_interval
+    coordinator.rssi = None
+    coordinator._bluetooth_state_listeners = set()
+    coordinator.device_info = None
+    coordinator._watering_started_at = None
+    coordinator._watering_station = None
+    coordinator.last_watering_time = None
+    coordinator.last_watering_station = None
+    coordinator.last_watering_duration = None
     coordinator._async_set_latest_ble_device = MethodType(
         lambda self: ble_device_available,
         coordinator,
@@ -265,3 +273,87 @@ async def test_refresh_status_clears_pending_flag_when_device_is_unavailable() -
     assert coordinator._manual_command_pending is False
     assert coordinator.client.reads == 0
     assert updates == [None]
+
+
+# ---------------------------------------------------------------------- #
+# Bluetooth-derived state (RSSI)
+# ---------------------------------------------------------------------- #
+
+
+def test_set_rssi_notifies_listeners_only_on_change() -> None:
+    coordinator = _coordinator()
+    events: list[int | None] = []
+    unsub = coordinator.async_add_bluetooth_state_listener(
+        lambda: events.append(coordinator.rssi)
+    )
+    try:
+        coordinator._set_rssi(-55)
+        coordinator._set_rssi(-55)  # same value -> no extra notification
+        coordinator._set_rssi(-60)
+    finally:
+        unsub()
+
+    assert events == [-55, -60]
+    assert coordinator.rssi == -60
+
+
+def test_set_rssi_ignores_none() -> None:
+    coordinator = _coordinator()
+    coordinator._set_rssi(-50)
+    coordinator._set_rssi(None)
+
+    assert coordinator.rssi == -50
+
+
+def test_remove_bluetooth_state_listener_stops_notifications() -> None:
+    coordinator = _coordinator()
+    events: list[None] = []
+    unsub = coordinator.async_add_bluetooth_state_listener(lambda: events.append(None))
+    unsub()
+
+    coordinator._set_rssi(-55)
+    assert events == []
+
+
+# ---------------------------------------------------------------------- #
+# Last-watering tracking
+# ---------------------------------------------------------------------- #
+
+
+def test_track_watering_records_cycle_on_active_to_idle_transition() -> None:
+    coordinator = _coordinator()
+    coordinator.active_station = 2
+
+    coordinator._track_watering_transitions(
+        SolemStatus(SolemMode.SINGLE_STATION_ACTIVE, True, 600, "active")
+    )
+    assert coordinator._watering_started_at is not None
+    assert coordinator._watering_station == 2
+
+    coordinator._track_watering_transitions(
+        SolemStatus(SolemMode.IDLE, False, 0, "idle")
+    )
+
+    assert coordinator.last_watering_station == 2
+    assert coordinator.last_watering_duration is not None
+    assert coordinator.last_watering_duration >= 0
+    assert coordinator.last_watering_time is not None
+    assert coordinator._watering_started_at is None
+
+
+def test_track_watering_ignores_idle_when_no_active_observed() -> None:
+    coordinator = _coordinator()
+
+    coordinator._track_watering_transitions(
+        SolemStatus(SolemMode.IDLE, False, 0, "idle")
+    )
+
+    assert coordinator.last_watering_time is None
+    assert coordinator.last_watering_duration is None
+    assert coordinator.last_watering_station is None
+
+
+def test_track_watering_handles_none_status() -> None:
+    coordinator = _coordinator()
+    coordinator._track_watering_transitions(None)
+    assert coordinator.last_watering_time is None

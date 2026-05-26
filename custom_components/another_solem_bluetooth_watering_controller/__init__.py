@@ -60,6 +60,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolemConfigEntry) -> boo
     # raises, so a failure here will simply leave entities as Unknown until
     # the next attempt.
     await coordinator.async_refresh()
+    # Populate device identity once. Fail-soft: a missing device-info read
+    # only means the device card shows the generic defaults until the next
+    # successful connection (where it will be re-attempted via the same
+    # method below). Done after the first status read to reuse the warm
+    # BLE session opened by ``async_refresh``.
+    await coordinator.async_refresh_device_info()
     return True
 
 

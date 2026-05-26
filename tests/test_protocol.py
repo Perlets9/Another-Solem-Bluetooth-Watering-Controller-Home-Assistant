@@ -8,6 +8,7 @@ from custom_components.another_solem_bluetooth_watering_controller.protocol impo
     SolemMode,
     build_all_stations_command,
     build_station_command,
+    parse_device_info,
     parse_status_notification,
     stop_command,
 )
@@ -27,7 +28,10 @@ def test_build_all_stations_command() -> None:
 
 def test_stop_and_status_commands() -> None:
     assert stop_command().hex() == "31051500ff0000"
-    assert STATUS_COMMAND.hex() == "3105a000010000"
+    # STATUS_COMMAND was simplified to the bare `3b 00` frame (matches the
+    # MySolem app on the wire). It happens to be identical to COMMIT_COMMAND
+    # because the controller's status request and commit frame are the same.
+    assert STATUS_COMMAND.hex() == "3b00"
     assert COMMIT_COMMAND.hex() == "3b00"
 
 
@@ -96,3 +100,34 @@ def test_parse_battery_level_none_when_out_of_range() -> None:
     payload = bytes.fromhex("321002400000000000008000000000")
     status = parse_status_notification(payload)
     assert status.battery_level is None
+
+
+def test_parse_device_info_from_real_capture() -> None:
+    # Record 0x01 payload (after stripping `[10] [LEN] [REC_IDX]`):
+    #   MAC=C8:B9:61:D5:AA:7E, firmware bytes 5.1.7 at offsets 9..11.
+    record_01 = bytes.fromhex("c8b961d5aa7ee202410501070100")
+    # Record 0x00 payload: 15-byte ASCII name null-padded.
+    record_00 = bytes.fromhex("424c3249502d443541413745000000")
+
+    info = parse_device_info({0x01: record_01, 0x00: record_00})
+
+    assert info.mac == "C8:B9:61:D5:AA:7E"
+    assert info.device_name == "BL2IP-D5AA7E"
+    assert info.model == "BL2IP"
+    assert info.firmware == "5.1.7"
+
+
+def test_parse_device_info_handles_missing_records() -> None:
+    info = parse_device_info({})
+    assert info.mac == ""
+    assert info.device_name == ""
+    assert info.model is None
+    assert info.firmware is None
+
+
+def test_parse_device_info_skips_firmware_when_bytes_implausible() -> None:
+    # Firmware bytes all zero -> implausible, must stay None
+    record_01 = bytes.fromhex("c8b961d5aa7ee2024100000000000000")
+    info = parse_device_info({0x01: record_01})
+    assert info.mac == "C8:B9:61:D5:AA:7E"
+    assert info.firmware is None
