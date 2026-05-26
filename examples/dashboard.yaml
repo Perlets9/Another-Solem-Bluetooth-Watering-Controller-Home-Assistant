@@ -1,0 +1,129 @@
+# Example Lovelace dashboard for the SOLEM BL-IP integration.
+#
+# Copy this YAML into a new dashboard view (Settings -> Dashboards ->
+# Edit dashboard -> raw YAML) and replace the entity IDs with the ones
+# your instance generated for your device. Entity IDs follow the pattern:
+#   <domain>.<device_slug>_<key>
+# For a device named "SOLEM BL-IP D5AA7E" you'd get
+# ``sensor.solem_bl_ip_d5aa7e_status`` etc.
+#
+# This dashboard exposes:
+#   * Current irrigation status + battery + RSSI
+#   * Quick actions (start each station with the configured default duration,
+#     start all stations, run a program, stop)
+#   * Last-watering history
+#   * Per-program summary (name, frequency, water budget, start times,
+#     station assignments)
+#
+# Add or remove rows to match the number of stations / programs your
+# controller advertises.
+
+title: SOLEM Irrigation
+views:
+  - title: Overview
+    path: solem
+    icon: mdi:sprinkler
+    cards:
+      - type: entities
+        title: Controller
+        entities:
+          - entity: sensor.solem_bl_ip_status
+            name: Status
+          - entity: sensor.solem_bl_ip_time_remaining
+            name: Time remaining
+          - entity: sensor.solem_bl_ip_battery
+            name: Battery
+          - entity: sensor.solem_bl_ip_rssi
+            name: Signal (RSSI)
+
+      - type: horizontal-stack
+        cards:
+          - type: button
+            entity: switch.solem_bl_ip_station_1
+            name: Station 1
+            tap_action:
+              action: toggle
+          - type: button
+            entity: switch.solem_bl_ip_station_2
+            name: Station 2
+            tap_action:
+              action: toggle
+          - type: button
+            entity: button.solem_bl_ip_stop
+            name: Stop
+            icon: mdi:stop-circle
+            tap_action:
+              action: press
+
+      - type: horizontal-stack
+        cards:
+          - type: button
+            entity: switch.solem_bl_ip_program_a
+            name: Run A
+            icon: mdi:play
+            tap_action:
+              action: toggle
+          - type: button
+            entity: switch.solem_bl_ip_program_b
+            name: Run B
+            icon: mdi:play
+            tap_action:
+              action: toggle
+          - type: button
+            entity: switch.solem_bl_ip_program_c
+            name: Run C
+            icon: mdi:play
+            tap_action:
+              action: toggle
+
+      - type: entities
+        title: Last watering
+        entities:
+          - entity: sensor.solem_bl_ip_last_watering_time
+            name: When
+          - entity: sensor.solem_bl_ip_last_watering_station
+            name: Station
+          - entity: sensor.solem_bl_ip_last_watering_duration
+            name: Duration
+
+      - type: entities
+        title: Program A
+        entities:
+          - entity: sensor.solem_bl_ip_program_a_name
+            name: Name
+          - entity: sensor.solem_bl_ip_program_a_frequency
+            name: Frequency
+          - entity: sensor.solem_bl_ip_program_a_water_budget
+            name: Water budget
+          - entity: sensor.solem_bl_ip_program_a_start_times
+            name: Start times
+          - entity: sensor.solem_bl_ip_program_a_stations
+            name: Stations
+
+      - type: entities
+        title: Program B
+        entities:
+          - entity: sensor.solem_bl_ip_program_b_name
+          - entity: sensor.solem_bl_ip_program_b_frequency
+          - entity: sensor.solem_bl_ip_program_b_water_budget
+          - entity: sensor.solem_bl_ip_program_b_start_times
+          - entity: sensor.solem_bl_ip_program_b_stations
+
+      - type: entities
+        title: Program C
+        entities:
+          - entity: sensor.solem_bl_ip_program_c_name
+          - entity: sensor.solem_bl_ip_program_c_frequency
+          - entity: sensor.solem_bl_ip_program_c_water_budget
+          - entity: sensor.solem_bl_ip_program_c_start_times
+          - entity: sensor.solem_bl_ip_program_c_stations
+
+      - type: entities
+        title: Diagnostics
+        entities:
+          - entity: button.solem_bl_ip_refresh_status
+            name: Refresh status
+          - entity: button.solem_bl_ip_refresh_programs
+            name: Refresh programs
+          - entity: button.solem_bl_ip_reset_bluetooth_connection
+            name: Reset Bluetooth

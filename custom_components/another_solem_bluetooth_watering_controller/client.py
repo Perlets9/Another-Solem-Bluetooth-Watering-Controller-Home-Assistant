@@ -24,9 +24,16 @@ from .const import (
     NOTIFY_UUID,
     WRITE_UUID,
 )
+from .programs import (
+    TOTAL_PROGRAM_FRAMES,
+    Program,
+    build_program_write_frames,
+    parse_program_dump,
+)
 from .protocol import (
     COMMIT_COMMAND,
     DEVICE_INFO_COMMAND,
+    PROGRAMS_READ_COMMAND,
     STATUS_COMMAND,
     SolemDeviceInfo,
     SolemStatus,
@@ -234,6 +241,98 @@ class SolemBleClient:
         """Poll the controller status using the non-intrusive ON command."""
         async with self._operation_lock:
             return await self._execute(self._do_read_status, op_name="read_status")
+
+    async def write_program(self, slot: int, rows: tuple[bytes, ...]) -> None:
+        """Persist a single program slot, then commit with ``3b 00``.
+
+        Each of the 7 row frames is written sequentially with a small
+        pause to let the controller catch up (the firmware does not
+        natively ACK row writes via GATT response). The final commit
+        triggers the device to apply the change and return a status
+        notification, which we drain by piggy-backing on the existing
+        status-read flow.
+        """
+        frames = build_program_write_frames(slot, rows)
+        async with self._operation_lock:
+            await self._execute(
+                lambda: self._do_write_program(frames), op_name="write_program"
+            )
+
+    async def _do_write_program(self, frames: list[bytes]) -> None:
+        for frame in frames:
+            await self._client.write_gatt_char(WRITE_UUID, frame, response=False)
+            # Empirically a small inter-frame pause avoids dropped writes
+            # on flaky proxies; matches the cadence MySolem uses.
+            await asyncio.sleep(0.05)
+        # Final commit: the firmware applies the staged rows and emits a
+        # status response. We fire-and-forget here; the next status poll
+        # will reconcile state.
+        await self._client.write_gatt_char(WRITE_UUID, COMMIT_COMMAND, response=False)
+
+    async def read_programs(self) -> list[Program]:
+        """Issue `0x39 00` and parse the 84-frame program dump."""
+        async with self._operation_lock:
+            return await self._execute(
+                self._do_read_programs, op_name="read_programs"
+            )
+
+    async def _do_read_programs(self) -> list[Program]:
+        """Collect ``0x3a`` notifications until the full dump has arrived.
+
+        The controller emits 12 slots x 7 rows = 84 notifications back to
+        back. We arm a "quiet timeout" so we don't wait forever if the
+        firmware drops a frame: as soon as no new frame arrives for a
+        configurable window we close out the collection and parse what
+        we got. The parser tolerates missing slots gracefully.
+        """
+        frames: list[bytes] = []
+        complete = asyncio.Event()
+        # Per-frame quiet timeout. The firmware streams the whole dump in
+        # well under 2s, so 1s of silence reliably means "done" while
+        # still leaving headroom for slow Bluetooth proxies.
+        quiet_seconds = 1.0
+        loop = asyncio.get_running_loop()
+        quiet_handle: asyncio.TimerHandle | None = None
+
+        def _arm_quiet() -> None:
+            nonlocal quiet_handle
+            if quiet_handle is not None:
+                quiet_handle.cancel()
+            quiet_handle = loop.call_later(quiet_seconds, complete.set)
+
+        def _handler(_sender: str, data: bytes) -> None:
+            if len(data) < 4 or data[0] != 0x3A:
+                return
+            frames.append(bytes(data))
+            if len(frames) >= TOTAL_PROGRAM_FRAMES:
+                complete.set()
+                return
+            _arm_quiet()
+
+        await self._client.start_notify(NOTIFY_UUID, _handler)
+        try:
+            await self._client.write_gatt_char(
+                WRITE_UUID, PROGRAMS_READ_COMMAND, response=False
+            )
+            # Cap the whole dump at ``self.timeout`` to avoid hanging on
+            # devices that never finish (would not normally happen).
+            try:
+                await asyncio.wait_for(complete.wait(), timeout=self.timeout)
+            except asyncio.TimeoutError:
+                _LOGGER.debug(
+                    "SOLEM programs read timed out with %d/%d frames",
+                    len(frames),
+                    TOTAL_PROGRAM_FRAMES,
+                )
+        finally:
+            if quiet_handle is not None:
+                quiet_handle.cancel()
+            try:
+                await self._client.stop_notify(NOTIFY_UUID)
+            except Exception as err:  # noqa: BLE001 - notify teardown is best-effort
+                _LOGGER.debug("Failed to stop SOLEM notifications cleanly: %s", err)
+
+        return parse_program_dump(frames)
 
     async def read_device_info(self) -> SolemDeviceInfo:
         """Issue `0x0f 00` and parse the two `0x10` records that come back."""

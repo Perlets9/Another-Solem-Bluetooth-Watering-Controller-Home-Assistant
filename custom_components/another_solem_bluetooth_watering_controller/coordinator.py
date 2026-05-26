@@ -23,6 +23,7 @@ from .const import (
     CONF_KEEP_CONNECTION,
     CONF_POLL_INTERVAL,
     CONF_POLLING_ENABLED,
+    CONF_PROGRAMS_REFRESH_INTERVAL,
     CONF_STATION_COUNT,
     DEFAULT_ACTIVE_POLL_INTERVAL,
     DEFAULT_BLUETOOTH_TIMEOUT,
@@ -31,7 +32,15 @@ from .const import (
     DEFAULT_IDLE_POLL_INTERVAL,
     DEFAULT_KEEP_CONNECTION,
     DEFAULT_POLLING_ENABLED,
+    DEFAULT_PROGRAMS_REFRESH_INTERVAL,
     DOMAIN,
+    MIN_PROGRAMS_REFRESH_INTERVAL,
+)
+from .programs import (
+    Program,
+    apply_program_changes,
+    encode_program,
+    unknown_diff_locations,
 )
 from .protocol import (
     SolemDeviceInfo,
@@ -149,6 +158,22 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
         self.last_watering_time: datetime | None = None
         self.last_watering_station: int | None = None
         self.last_watering_duration: int | None = None
+        # Program slot snapshots. Populated on demand by
+        # ``async_refresh_programs`` (initial bootstrap + scheduled refresh
+        # every ``_programs_refresh_interval``).
+        self.programs: list[Program] | None = None
+        self.programs_last_refresh: datetime | None = None
+        programs_refresh = _int_option(
+            current_config,
+            CONF_PROGRAMS_REFRESH_INTERVAL,
+            DEFAULT_PROGRAMS_REFRESH_INTERVAL,
+        )
+        if programs_refresh < MIN_PROGRAMS_REFRESH_INTERVAL:
+            programs_refresh = MIN_PROGRAMS_REFRESH_INTERVAL
+        self._programs_refresh_interval = timedelta(seconds=programs_refresh)
+        # Listeners (typically program-aware entities) get notified after
+        # every successful programs refresh so they can re-render.
+        self._programs_listeners: set[Callable[[], None]] = set()
         super().__init__(
             hass,
             _LOGGER,
@@ -319,7 +344,16 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
                 return None
             self._track_watering_transitions(status)
             self._apply_adaptive_interval(status)
-            return status
+            should_refresh_programs = self._programs_refresh_due()
+
+        if should_refresh_programs:
+            # Run outside the lock as a background task: the programs read
+            # acquires its own lock and we don't want to hold this one for
+            # the ~2s the 84-frame dump takes.
+            hass = getattr(self, "hass", None)
+            if hass is not None:
+                hass.async_create_task(self.async_refresh_programs())
+        return status
 
     async def _async_read_status(self) -> SolemStatus:
         """Read status from the controller."""
@@ -446,6 +480,112 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
                 self._apply_adaptive_interval(status)
         finally:
             self._manual_command_pending = False
+
+    def async_add_programs_listener(
+        self, listener: Callable[[], None]
+    ) -> Callable[[], None]:
+        """Register a callback fired after every programs refresh."""
+        self._programs_listeners.add(listener)
+        return lambda: self._programs_listeners.discard(listener)
+
+    def _notify_programs_listeners(self) -> None:
+        for listener in tuple(self._programs_listeners):
+            try:
+                listener()
+            except Exception:  # noqa: BLE001 - listener errors must not break flow
+                _LOGGER.exception("SOLEM programs listener raised")
+
+    def _programs_refresh_due(self) -> bool:
+        """Whether the cached programs are stale enough to warrant a re-read."""
+        if self.programs is None:
+            return True
+        if self.programs_last_refresh is None:
+            return True
+        return (
+            dt_util.utcnow() - self.programs_last_refresh
+            >= self._programs_refresh_interval
+        )
+
+    async def async_refresh_programs(self) -> list[Program] | None:
+        """Re-read the 12 program slots from the controller.
+
+        Failure-tolerant: a missing read leaves the cached snapshot intact
+        so dashboards don't blank out on a transient BLE hiccup. Skipped
+        entirely while a manual command is pending to avoid stepping on
+        active station/run-program traffic.
+        """
+        if self._manual_command_pending:
+            _LOGGER.debug(
+                "Skipping SOLEM programs refresh: manual command in flight"
+            )
+            return self.programs
+        async with self._ble_operation_lock:
+            if not self._async_set_latest_ble_device():
+                _LOGGER.debug(
+                    "Skipping SOLEM programs refresh: controller not in range yet"
+                )
+                return self.programs
+            try:
+                programs = await self.client.read_programs()
+            except Exception as err:  # noqa: BLE001 - best-effort read
+                _LOGGER.debug("SOLEM programs read failed: %s", err)
+                return self.programs
+        self.programs = programs
+        self.programs_last_refresh = dt_util.utcnow()
+        self._notify_programs_listeners()
+        return programs
+
+    async def async_configure_program(self, program_index: int, **changes) -> Program:
+        """Read-modify-write a program slot with safety checks.
+
+        Workflow:
+        1. Refresh cached programs (fresh dump) so we modify the current
+           bytes-on-the-wire, not a stale snapshot.
+        2. Build the modified :class:`Program` via :func:`apply_program_changes`.
+        3. Re-encode it and compare to the original payload. If any byte
+           outside the integration's known-writable offsets has changed,
+           abort instead of overwriting reserved bytes blindly.
+        4. Write all 7 rows + commit, then re-read to confirm.
+        """
+        if not 1 <= program_index <= 3:
+            raise HomeAssistantError(
+                f"Program index must be 1, 2 or 3 (got {program_index})"
+            )
+        await self.async_refresh_programs()
+        programs = self.programs or []
+        idx = program_index - 1
+        if idx >= len(programs):
+            raise HomeAssistantError(
+                f"Program {program_index} is not available on this controller"
+            )
+        original = programs[idx]
+        if not original.raw_rows:
+            raise HomeAssistantError(
+                "No raw program payload cached; refresh the integration and retry"
+            )
+        modified = apply_program_changes(original, **changes)
+        new_rows = encode_program(modified)
+        bad = unknown_diff_locations(original.raw_rows, new_rows)
+        if bad:
+            raise HomeAssistantError(
+                "Refusing to write SOLEM program: the change would touch "
+                f"{len(bad)} reserved bytes (row,offset = {bad[:5]}...). "
+                "This protects you from corrupting the controller config."
+            )
+        async with self._ble_operation_lock:
+            if not self._async_set_latest_ble_device():
+                raise HomeAssistantError(
+                    "SOLEM controller not reachable; try again later"
+                )
+            try:
+                await self.client.write_program(original.slot, new_rows)
+            except Exception as err:  # noqa: BLE001 - surface BLE errors to the UI
+                raise HomeAssistantError(
+                    f"Unable to configure SOLEM program {program_index}: {err}"
+                ) from err
+        # Re-read so cached state and entities reflect the new config.
+        await self.async_refresh_programs()
+        return modified
 
     async def async_refresh_device_info(self) -> SolemDeviceInfo | None:
         """Read device identity once, caching it on the coordinator.

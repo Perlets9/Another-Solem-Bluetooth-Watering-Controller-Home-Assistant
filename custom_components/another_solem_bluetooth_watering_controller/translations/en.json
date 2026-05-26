@@ -13,7 +13,8 @@
           "active_poll_interval": "Active polling interval (seconds)",
           "bluetooth_timeout": "Bluetooth timeout (seconds)",
           "keep_connection": "Keep BLE connection between operations",
-          "connection_idle_timeout": "Connection idle timeout (seconds)"
+          "connection_idle_timeout": "Connection idle timeout (seconds)",
+          "enable_program_editing": "Enable program editing entities"
         },
         "data_description": {
           "address": "The Bluetooth address of your BL-IP. Only devices already advertising to Home Assistant appear here.",
@@ -24,7 +25,8 @@
           "active_poll_interval": "How often to poll while watering, so the timer countdown stays accurate. Shorter values drain more battery during a session.",
           "bluetooth_timeout": "Maximum time to wait for a BLE connect or notification before giving up. Increase if you reach the controller through a slow proxy.",
           "keep_connection": "Reuse the BLE session across consecutive operations instead of reconnecting every time. Recommended on; the connection closes automatically after the idle timeout below.",
-          "connection_idle_timeout": "How long to keep the BLE connection open with no traffic. Short values (5-15s) save battery; longer values make back-to-back commands snappier."
+          "connection_idle_timeout": "How long to keep the BLE connection open with no traffic. Short values (5-15s) save battery; longer values make back-to-back commands snappier.",
+          "enable_program_editing": "When enabled, exposes select/number/text entities to edit programs from the UI. Each change triggers a BLE write to the controller. Off by default."
         }
       }
     },
@@ -49,7 +51,8 @@
           "active_poll_interval": "Active polling interval (seconds)",
           "bluetooth_timeout": "Bluetooth timeout (seconds)",
           "keep_connection": "Keep BLE connection between operations",
-          "connection_idle_timeout": "Connection idle timeout (seconds)"
+          "connection_idle_timeout": "Connection idle timeout (seconds)",
+          "enable_program_editing": "Enable program editing entities"
         },
         "data_description": {
           "default_duration": "Duration used by the station switches when you turn them on from the UI. Service calls can override this per-call.",
@@ -58,7 +61,8 @@
           "active_poll_interval": "How often to poll while watering, so the timer countdown stays accurate. Shorter values drain more battery during a session.",
           "bluetooth_timeout": "Maximum time to wait for a BLE connect or notification. Increase if you reach the controller through a slow proxy.",
           "keep_connection": "Reuse the BLE session across consecutive operations instead of reconnecting every time. The connection closes after the idle timeout below.",
-          "connection_idle_timeout": "How long to keep the BLE connection open with no traffic. Short values (5-15s) save battery; longer values make back-to-back commands snappier."
+          "connection_idle_timeout": "How long to keep the BLE connection open with no traffic. Short values (5-15s) save battery; longer values make back-to-back commands snappier.",
+          "enable_program_editing": "When enabled, exposes select/number/text entities to edit programs from the UI. Off by default."
         }
       }
     }
@@ -91,6 +95,54 @@
     "stop": {
       "name": "Stop watering",
       "description": "Stop any manual watering currently running on the controller."
+    },
+    "run_program": {
+      "name": "Run program",
+      "description": "Run one of the controller's pre-configured programs (A, B or C).",
+      "fields": {
+        "program": {
+          "name": "Program",
+          "description": "Program number (1 = A, 2 = B, 3 = C)."
+        }
+      }
+    },
+    "configure_program": {
+      "name": "Configure program",
+      "description": "Update a program slot on the controller (read-modify-write). Only the provided fields are changed; reserved bytes are preserved byte-for-byte.",
+      "fields": {
+        "program": {
+          "name": "Program",
+          "description": "Program number to modify (1 = A, 2 = B, 3 = C)."
+        },
+        "name": {
+          "name": "Name",
+          "description": "New program name (max 16 ASCII characters)."
+        },
+        "water_budget": {
+          "name": "Water budget",
+          "description": "Watering percentage (0-200), 100 = normal."
+        },
+        "frequency": {
+          "name": "Frequency",
+          "description": "Frequency mode (daily, custom, even_days, odd_days, odd_days_excl_31, interval)."
+        },
+        "period_days": {
+          "name": "Period (days)",
+          "description": "Days between firings (only with frequency=interval)."
+        },
+        "days_of_week": {
+          "name": "Days of week",
+          "description": "Weekdays (only with frequency=custom)."
+        },
+        "start_times": {
+          "name": "Start times",
+          "description": "List of HH:MM start times (max 8)."
+        },
+        "stations": {
+          "name": "Stations",
+          "description": "Per-station duration in MINUTES, as { station_number: minutes }."
+        }
+      }
     }
   }
 }

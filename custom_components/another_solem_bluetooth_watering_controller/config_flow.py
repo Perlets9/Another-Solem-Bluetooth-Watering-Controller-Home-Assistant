@@ -17,6 +17,7 @@ from .const import (
     CONF_BLUETOOTH_TIMEOUT,
     CONF_CONNECTION_IDLE_TIMEOUT,
     CONF_DEFAULT_DURATION,
+    CONF_ENABLE_PROGRAM_EDITING,
     CONF_IDLE_POLL_INTERVAL,
     CONF_KEEP_CONNECTION,
     CONF_NAME,
@@ -27,6 +28,7 @@ from .const import (
     DEFAULT_BLUETOOTH_TIMEOUT,
     DEFAULT_CONNECTION_IDLE_TIMEOUT,
     DEFAULT_DURATION,
+    DEFAULT_ENABLE_PROGRAM_EDITING,
     DEFAULT_IDLE_POLL_INTERVAL,
     DEFAULT_KEEP_CONNECTION,
     DEFAULT_POLLING_ENABLED,
@@ -110,6 +112,9 @@ class SolemConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_BLUETOOTH_TIMEOUT: user_input[CONF_BLUETOOTH_TIMEOUT],
                 CONF_KEEP_CONNECTION: user_input[CONF_KEEP_CONNECTION],
                 CONF_CONNECTION_IDLE_TIMEOUT: user_input[CONF_CONNECTION_IDLE_TIMEOUT],
+                CONF_ENABLE_PROGRAM_EDITING: user_input.get(
+                    CONF_ENABLE_PROGRAM_EDITING, DEFAULT_ENABLE_PROGRAM_EDITING
+                ),
             }
             return self.async_create_entry(title=title, data=data)
 
@@ -150,6 +155,10 @@ class SolemConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(
                     CONF_CONNECTION_IDLE_TIMEOUT, default=DEFAULT_CONNECTION_IDLE_TIMEOUT
                 ): vol.All(vol.Coerce(int), vol.Range(min=MIN_CONNECTION_IDLE_TIMEOUT)),
+                vol.Required(
+                    CONF_ENABLE_PROGRAM_EDITING,
+                    default=DEFAULT_ENABLE_PROGRAM_EDITING,
+                ): selector({"boolean": {}}),
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
@@ -199,6 +208,12 @@ class SolemOptionsFlow(OptionsFlow):
                         CONF_CONNECTION_IDLE_TIMEOUT, DEFAULT_CONNECTION_IDLE_TIMEOUT
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=MIN_CONNECTION_IDLE_TIMEOUT)),
+                vol.Required(
+                    CONF_ENABLE_PROGRAM_EDITING,
+                    default=current.get(
+                        CONF_ENABLE_PROGRAM_EDITING, DEFAULT_ENABLE_PROGRAM_EDITING
+                    ),
+                ): selector({"boolean": {}}),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

@@ -68,3 +68,28 @@ def test_run_program_switch_default_name_used_when_programs_unknown() -> None:
 
     switch = RunProgramSwitch(coordinator, 1)
     assert switch.name == "Program A"
+
+
+def test_run_program_switch_uses_program_name_when_available() -> None:
+    from custom_components.another_solem_bluetooth_watering_controller.programs import (
+        FrequencyType,
+        Program,
+    )
+
+    coordinator = _coordinator(active_station=None, active_program=None)
+    coordinator.programs = [
+        Program(
+            slot=0,
+            name="Mattina",
+            water_budget=100,
+            frequency_type=FrequencyType.DAILY,
+            frequency_label="Daily",
+            dow_bitmap=0x7F,
+            period_days=0,
+            days_to_next=0,
+            last_modified=None,
+        )
+    ]
+
+    switch = RunProgramSwitch(coordinator, 1)
+    assert switch.name == "Mattina"

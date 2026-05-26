@@ -15,6 +15,8 @@ STATUS_COMMAND = bytes.fromhex("3b00")
 # Device info read: returns two notifications with opcode 0x10. Record 0x01
 # contains MAC + firmware bytes, record 0x00 contains the device name.
 DEVICE_INFO_COMMAND = bytes.fromhex("0f00")
+# Programs read: returns 84 notifications with opcode 0x3a (12 slots x 7 rows).
+PROGRAMS_READ_COMMAND = bytes.fromhex("3900")
 
 MIN_DURATION = 1
 MAX_DURATION = 720

@@ -25,6 +25,13 @@ CONF_ACTIVE_POLL_INTERVAL = "active_poll_interval"
 CONF_BLUETOOTH_TIMEOUT = "bluetooth_timeout"
 CONF_KEEP_CONNECTION = "keep_connection"
 CONF_CONNECTION_IDLE_TIMEOUT = "connection_idle_timeout"
+# How often the integration re-reads the 12 program slots from the controller.
+# Programs change rarely; reading them is a 84-frame chatty operation. 6h
+# strikes a good balance for "show me the schedule" use cases.
+CONF_PROGRAMS_REFRESH_INTERVAL = "programs_refresh_interval"
+# Opt-in flag that exposes editing entities (select/number/text) for program
+# fields. Off by default because every entity change triggers a BLE write.
+CONF_ENABLE_PROGRAM_EDITING = "enable_program_editing"
 
 SUPPORTED_STATION_COUNTS = (1, 2, 4, 6)
 DEFAULT_DURATION = 10
@@ -43,6 +50,8 @@ DEFAULT_KEEP_CONNECTION = True
 # peripheral in "connected" state is far more expensive than reconnecting
 # with bleak-retry-connector's service cache, so we err on the short side.
 DEFAULT_CONNECTION_IDLE_TIMEOUT = 15
+DEFAULT_PROGRAMS_REFRESH_INTERVAL = 21600  # 6 hours
+DEFAULT_ENABLE_PROGRAM_EDITING = False
 
 MIN_DURATION = 1
 MAX_DURATION = 720
@@ -51,5 +60,8 @@ MIN_IDLE_POLL_INTERVAL = 30
 MIN_ACTIVE_POLL_INTERVAL = 10
 MIN_BLUETOOTH_TIMEOUT = 5
 MIN_CONNECTION_IDLE_TIMEOUT = 0
+# 5 minutes is the floor for the programs refresh: anything faster eats too
+# much BLE bandwidth for data that virtually never changes.
+MIN_PROGRAMS_REFRESH_INTERVAL = 300
 
 DEFAULT_UPDATE_INTERVAL = timedelta(seconds=DEFAULT_IDLE_POLL_INTERVAL)

@@ -62,6 +62,10 @@ def _coordinator(
     coordinator.last_watering_time = None
     coordinator.last_watering_station = None
     coordinator.last_watering_duration = None
+    coordinator.programs = None
+    coordinator.programs_last_refresh = None
+    coordinator._programs_refresh_interval = timedelta(seconds=21600)
+    coordinator._programs_listeners = set()
     coordinator._async_set_latest_ble_device = MethodType(
         lambda self: ble_device_available,
         coordinator,
@@ -398,6 +402,35 @@ async def test_stop_clears_active_program_marker() -> None:
     await coordinator.async_stop()
 
     assert coordinator.active_program is None
+
+
+# ---------------------------------------------------------------------- #
+# Programs refresh
+# ---------------------------------------------------------------------- #
+
+
+def test_programs_refresh_due_when_never_fetched() -> None:
+    coordinator = _coordinator()
+    assert coordinator._programs_refresh_due() is True
+
+
+def test_programs_refresh_not_due_right_after_refresh() -> None:
+    from datetime import datetime, timezone
+
+    coordinator = _coordinator()
+    coordinator.programs = []
+    coordinator.programs_last_refresh = datetime.now(tz=timezone.utc)
+    assert coordinator._programs_refresh_due() is False
+
+
+def test_programs_listener_unsubscribe_stops_notifications() -> None:
+    coordinator = _coordinator()
+    calls: list[None] = []
+    unsub = coordinator.async_add_programs_listener(lambda: calls.append(None))
+    coordinator._notify_programs_listeners()
+    unsub()
+    coordinator._notify_programs_listeners()
+    assert len(calls) == 1
 
 
 @pytest.mark.asyncio

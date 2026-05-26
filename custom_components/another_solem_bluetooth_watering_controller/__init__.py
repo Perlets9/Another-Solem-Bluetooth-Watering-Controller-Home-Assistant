@@ -16,8 +16,10 @@ PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
     Platform.NUMBER,
+    Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
+    Platform.TEXT,
 ]
 
 
@@ -66,6 +68,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolemConfigEntry) -> boo
     # method below). Done after the first status read to reuse the warm
     # BLE session opened by ``async_refresh``.
     await coordinator.async_refresh_device_info()
+    # Best-effort first read of the program slots. The polling loop will
+    # re-attempt on its own schedule if this fails (e.g. controller out of
+    # range during startup).
+    await coordinator.async_refresh_programs()
     return True
 
 

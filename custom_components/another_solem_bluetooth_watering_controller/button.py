@@ -24,6 +24,7 @@ async def async_setup_entry(
     entities: list[ButtonEntity] = [
         StopButton(coordinator),
         RefreshStatusButton(coordinator),
+        RefreshProgramsButton(coordinator),
         ResetBluetoothConnectionButton(coordinator),
     ]
     entities.extend(
@@ -56,6 +57,19 @@ class RefreshStatusButton(SolemEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_refresh_status()
+
+
+class RefreshProgramsButton(SolemEntity, ButtonEntity):
+    """Force an on-demand re-read of the 12 program slots."""
+
+    _attr_name = "Refresh Programs"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "refresh-programs")
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_refresh_programs()
 
 
 class ResetBluetoothConnectionButton(SolemEntity, ButtonEntity):

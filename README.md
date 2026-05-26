@@ -4,14 +4,27 @@ Minimal Home Assistant custom integration for SOLEM BL-IP Bluetooth watering con
 
 ## Scope
 
-This integration only handles local BLE control and status polling:
+This integration handles local BLE control, status polling and program management:
 
-- Start one station.
+- Start one station with a custom duration.
 - Start all stations.
+- Run one of the controller's pre-configured programs (A, B, C).
 - Stop watering.
-- Read real controller status by polling.
+- Read the live controller status, battery, and Bluetooth signal strength.
+- Read the 3 user programs (name, frequency, water budget, start times,
+  station assignments).
+- Optionally edit programs (name, water budget, frequency, ...) directly
+  from Home Assistant entities and services -- behind an opt-in flag.
 
-It does not include weather, schedules, water consumption, rain logic, or soil moisture logic. Build that behavior with native Home Assistant automations and helpers.
+It does not include weather, schedules outside the controller's native
+programs, water consumption, rain logic, or soil moisture logic. Build
+that behavior with native Home Assistant automations and helpers.
+
+### Example dashboard
+
+A ready-to-use Lovelace dashboard is provided at
+[`examples/dashboard.yaml`](examples/dashboard.yaml). Replace the entity IDs
+with the ones your instance generated (they are based on your device name).
 
 ## Installation
 

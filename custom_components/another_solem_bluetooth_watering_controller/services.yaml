@@ -77,3 +77,92 @@ run_program:
           min: 1
           max: 3
           mode: box
+
+configure_program:
+  name: Configure program
+  description: >-
+    Update a SOLEM BL-IP program slot (read-modify-write). All fields except
+    "program" are optional; only provided fields are changed. Reserved bytes
+    that the integration does not yet decode are preserved byte-for-byte to
+    avoid corrupting the controller configuration.
+  target:
+    device:
+      integration: another_solem_bluetooth_watering_controller
+  fields:
+    program:
+      name: Program
+      description: Program number to modify (1 = A, 2 = B, 3 = C).
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 3
+          mode: box
+    name:
+      name: Name
+      description: New program name (max 16 ASCII characters).
+      example: Mattina
+      selector:
+        text:
+    water_budget:
+      name: Water budget
+      description: Watering percentage (0-200), 100 = normal.
+      example: 100
+      selector:
+        number:
+          min: 0
+          max: 200
+          unit_of_measurement: "%"
+          mode: box
+    frequency:
+      name: Frequency
+      description: Frequency mode (daily, custom, even_days, odd_days, odd_days_excl_31, interval).
+      example: daily
+      selector:
+        select:
+          options:
+            - daily
+            - custom
+            - even_days
+            - odd_days
+            - odd_days_excl_31
+            - interval
+    period_days:
+      name: Period (days)
+      description: Days between firings (used only with frequency=interval). 7 = weekly.
+      example: 7
+      selector:
+        number:
+          min: 1
+          max: 30
+          mode: box
+    days_of_week:
+      name: Days of week
+      description: Weekdays selection (used only with frequency=custom).
+      example: ["mon", "wed", "fri"]
+      selector:
+        select:
+          multiple: true
+          options:
+            - mon
+            - tue
+            - wed
+            - thu
+            - fri
+            - sat
+            - sun
+    start_times:
+      name: Start times
+      description: List of HH:MM start times (max 8).
+      example: ["07:20", "19:00"]
+      selector:
+        object:
+    stations:
+      name: Stations
+      description: >-
+        Per-station duration in MINUTES. Keys are station numbers (1..6),
+        values are minutes (0..720). Stations not listed are deassigned.
+      example: { 1: 27, 2: 15 }
+      selector:
+        object:

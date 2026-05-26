@@ -22,6 +22,8 @@ from homeassistant.util import dt as dt_util
 
 from . import SolemConfigEntry
 from .entity import SolemEntity
+from .programs import Program
+from .protocol import MAX_PROGRAM, MIN_PROGRAM
 
 
 async def async_setup_entry(
@@ -31,18 +33,27 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensor entities."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities(
-        [
-            StatusSensor(coordinator),
-            TimeRemainingSensor(coordinator),
-            BatterySensor(coordinator),
-            RssiSensor(coordinator),
-            LastWateringTimeSensor(coordinator),
-            LastWateringStationSensor(coordinator),
-            LastWateringDurationSensor(coordinator),
-            RawStatusSensor(coordinator),
-        ]
-    )
+    entities: list[SensorEntity] = [
+        StatusSensor(coordinator),
+        TimeRemainingSensor(coordinator),
+        BatterySensor(coordinator),
+        RssiSensor(coordinator),
+        LastWateringTimeSensor(coordinator),
+        LastWateringStationSensor(coordinator),
+        LastWateringDurationSensor(coordinator),
+        RawStatusSensor(coordinator),
+    ]
+    for program in range(MIN_PROGRAM, MAX_PROGRAM + 1):
+        entities.extend(
+            [
+                ProgramNameSensor(coordinator, program),
+                ProgramFrequencySensor(coordinator, program),
+                ProgramWaterBudgetSensor(coordinator, program),
+                ProgramStartTimesSensor(coordinator, program),
+                ProgramStationsSensor(coordinator, program),
+            ]
+        )
+    async_add_entities(entities)
 
 
 class StatusSensor(SolemEntity, SensorEntity):
@@ -224,6 +235,138 @@ class LastWateringDurationSensor(_RestoreLastWateringMixin):
             return int(value) if value is not None else None
         except (TypeError, ValueError):
             return None
+
+
+_PROGRAM_DEFAULT_LABELS = {1: "Program A", 2: "Program B", 3: "Program C"}
+
+
+class _ProgramSensorBase(SolemEntity, SensorEntity):
+    """Common boilerplate for sensors that surface a single program's field.
+
+    Subscribes to the coordinator's program-refresh listener so the
+    entities push updates immediately after a fresh dump instead of
+    relying on the next polling cycle (the dump runs out-of-band).
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _key_suffix: str = ""
+    _name_suffix: str = ""
+
+    def __init__(self, coordinator, program: int) -> None:
+        super().__init__(coordinator, f"program-{program}-{self._key_suffix}")
+        self.program = program
+
+    @property
+    def _label(self) -> str:
+        return _PROGRAM_DEFAULT_LABELS.get(self.program, f"Program {self.program}")
+
+    @property
+    def name(self) -> str:
+        return f"{self._label} {self._name_suffix}"
+
+    @property
+    def _program(self) -> Program | None:
+        programs = getattr(self.coordinator, "programs", None)
+        if not programs:
+            return None
+        idx = self.program - 1
+        if 0 <= idx < len(programs):
+            return programs[idx]
+        return None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self.coordinator.async_add_programs_listener(self._handle_programs_update)
+        )
+
+    @callback
+    def _handle_programs_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class ProgramNameSensor(_ProgramSensorBase):
+    _key_suffix = "name"
+    _name_suffix = "Name"
+
+    @property
+    def native_value(self) -> str | None:
+        program = self._program
+        return program.name if program else None
+
+
+class ProgramFrequencySensor(_ProgramSensorBase):
+    _key_suffix = "frequency"
+    _name_suffix = "Frequency"
+
+    @property
+    def native_value(self) -> str | None:
+        program = self._program
+        return program.frequency_label if program else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object] | None:
+        program = self._program
+        if program is None:
+            return None
+        return {
+            "frequency_type": program.frequency_type.value,
+            "period_days": program.period_days,
+            "days_to_next": program.days_to_next,
+            "dow_bitmap": program.dow_bitmap,
+        }
+
+
+class ProgramWaterBudgetSensor(_ProgramSensorBase):
+    _key_suffix = "water-budget"
+    _name_suffix = "Water Budget"
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self) -> int | None:
+        program = self._program
+        return program.water_budget if program else None
+
+
+class ProgramStartTimesSensor(_ProgramSensorBase):
+    _key_suffix = "start-times"
+    _name_suffix = "Start Times"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self) -> int | None:
+        program = self._program
+        return len(program.start_times) if program else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object] | None:
+        program = self._program
+        if program is None:
+            return None
+        return {
+            "start_times": [t.strftime("%H:%M") for t in program.start_times],
+        }
+
+
+class ProgramStationsSensor(_ProgramSensorBase):
+    _key_suffix = "stations"
+    _name_suffix = "Stations"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self) -> int | None:
+        program = self._program
+        return len(program.stations) if program else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object] | None:
+        program = self._program
+        if program is None:
+            return None
+        return {
+            "stations": {str(idx): seconds for idx, seconds in program.stations.items()},
+        }
 
 
 class RawStatusSensor(SolemEntity, SensorEntity):
