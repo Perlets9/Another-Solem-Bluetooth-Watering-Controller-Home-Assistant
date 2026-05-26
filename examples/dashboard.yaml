@@ -33,7 +33,7 @@ views:
             name: Time remaining
           - entity: sensor.solem_bl_ip_battery
             name: Battery
-          - entity: sensor.solem_bl_ip_rssi
+          - entity: sensor.solem_bl_ip_signal_strength
             name: Signal (RSSI)
 
       - type: horizontal-stack
