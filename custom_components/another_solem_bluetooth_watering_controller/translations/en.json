@@ -68,6 +68,10 @@
       "name": "Start station",
       "description": "Water a single station for the requested duration. Lets automations water each station for a different time without changing the global watering duration.",
       "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "SOLEM BL-IP controller to drive."
+        },
         "station": {
           "name": "Station",
           "description": "Station number to activate, between 1 and the controller's station count."
@@ -82,6 +86,10 @@
       "name": "Start all stations",
       "description": "Run every station sequentially for the requested duration.",
       "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "SOLEM BL-IP controller to drive."
+        },
         "duration": {
           "name": "Duration",
           "description": "Watering duration per station in minutes (1-720)."
@@ -90,12 +98,22 @@
     },
     "stop": {
       "name": "Stop watering",
-      "description": "Stop any manual watering currently running on the controller."
+      "description": "Stop any manual watering currently running on the controller.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "SOLEM BL-IP controller to stop."
+        }
+      }
     },
     "run_program": {
       "name": "Run program",
       "description": "Run one of the controller's pre-configured programs (A, B or C).",
       "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "SOLEM BL-IP controller to drive."
+        },
         "program": {
           "name": "Program",
           "description": "Program number (1 = A, 2 = B, 3 = C)."
@@ -106,6 +124,10 @@
       "name": "Configure program",
       "description": "Update a program slot on the controller (read-modify-write). Only the provided fields are changed; reserved bytes are preserved byte-for-byte.",
       "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "SOLEM BL-IP controller to configure."
+        },
         "program": {
           "name": "Program",
           "description": "Program number to modify (1 = A, 2 = B, 3 = C)."
@@ -136,7 +158,7 @@
         },
         "stations": {
           "name": "Stations",
-          "description": "Per-station duration in MINUTES, as { station_number: minutes }."
+          "description": "Per-station duration in MINUTES. Keys are station numbers (1..6), values are minutes (0..720). Stations not listed are deassigned."
         }
       }
     }

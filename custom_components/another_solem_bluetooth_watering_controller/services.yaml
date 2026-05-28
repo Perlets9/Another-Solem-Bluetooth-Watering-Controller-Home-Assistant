@@ -4,10 +4,14 @@ start_station:
     Start watering a single SOLEM BL-IP station for the given duration. Use
     this in automations when different stations should run for different
     amounts of time.
-  target:
-    device:
-      integration: another_solem_bluetooth_watering_controller
   fields:
+    device_id:
+      name: Device
+      description: SOLEM BL-IP controller to drive.
+      required: true
+      selector:
+        device:
+          integration: another_solem_bluetooth_watering_controller
     station:
       name: Station
       description: Station number to activate (1-based).
@@ -34,10 +38,14 @@ start_all_stations:
   name: Start all stations
   description: >-
     Run every station of the SOLEM BL-IP sequentially for the given duration.
-  target:
-    device:
-      integration: another_solem_bluetooth_watering_controller
   fields:
+    device_id:
+      name: Device
+      description: SOLEM BL-IP controller to drive.
+      required: true
+      selector:
+        device:
+          integration: another_solem_bluetooth_watering_controller
     duration:
       name: Duration
       description: Watering duration per station in minutes.
@@ -53,9 +61,14 @@ start_all_stations:
 stop:
   name: Stop watering
   description: Stop any manual watering currently running on the controller.
-  target:
-    device:
-      integration: another_solem_bluetooth_watering_controller
+  fields:
+    device_id:
+      name: Device
+      description: SOLEM BL-IP controller to stop.
+      required: true
+      selector:
+        device:
+          integration: another_solem_bluetooth_watering_controller
 
 run_program:
   name: Run program
@@ -63,10 +76,14 @@ run_program:
     Run one of the controller's pre-configured programs (A, B or C). The
     controller runs the program's stations one after the other using the
     durations stored on the device itself.
-  target:
-    device:
-      integration: another_solem_bluetooth_watering_controller
   fields:
+    device_id:
+      name: Device
+      description: SOLEM BL-IP controller to drive.
+      required: true
+      selector:
+        device:
+          integration: another_solem_bluetooth_watering_controller
     program:
       name: Program
       description: Program number (1 = A, 2 = B, 3 = C).
@@ -85,10 +102,14 @@ configure_program:
     "program" are optional; only provided fields are changed. Reserved bytes
     that the integration does not yet decode are preserved byte-for-byte to
     avoid corrupting the controller configuration.
-  target:
-    device:
-      integration: another_solem_bluetooth_watering_controller
   fields:
+    device_id:
+      name: Device
+      description: SOLEM BL-IP controller to configure.
+      required: true
+      selector:
+        device:
+          integration: another_solem_bluetooth_watering_controller
     program:
       name: Program
       description: Program number to modify (1 = A, 2 = B, 3 = C).
@@ -163,6 +184,6 @@ configure_program:
       description: >-
         Per-station duration in MINUTES. Keys are station numbers (1..6),
         values are minutes (0..720). Stations not listed are deassigned.
-      example: { 1: 27, 2: 15 }
+      example: '{"1": 27, "2": 15}'
       selector:
         object:
