@@ -56,20 +56,33 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class StatusSensor(SolemEntity, SensorEntity):
-    """Controller mode sensor."""
+class StatusSensor(SolemEntity, RestoreSensor):
+    """Controller mode sensor.
+
+    Restores the last published mode label across HA restarts so the entity
+    does not appear as ``unknown`` while the first BLE poll is in flight.
+    """
 
     _attr_name = "Status"
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator, "status")
+        self._restored_value: str | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_sensor_data()
+        if last is not None and last.native_value is not None:
+            self._restored_value = str(last.native_value)
 
     @property
     def native_value(self) -> str | None:
-        return None if self.coordinator.data is None else self.coordinator.data.mode.value
+        if self.coordinator.data is None:
+            return self._restored_value
+        return self.coordinator.data.mode.value
 
 
-class TimeRemainingSensor(SolemEntity, SensorEntity):
+class TimeRemainingSensor(SolemEntity, RestoreSensor):
     """Remaining watering time."""
 
     _attr_name = "Time Remaining"
@@ -78,13 +91,25 @@ class TimeRemainingSensor(SolemEntity, SensorEntity):
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator, "time-remaining")
+        self._restored_value: int | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_sensor_data()
+        if last is not None and last.native_value is not None:
+            try:
+                self._restored_value = int(last.native_value)
+            except (TypeError, ValueError):
+                self._restored_value = None
 
     @property
     def native_value(self) -> int | None:
-        return None if self.coordinator.data is None else self.coordinator.data.timer_remaining
+        if self.coordinator.data is None:
+            return self._restored_value
+        return self.coordinator.data.timer_remaining
 
 
-class BatterySensor(SolemEntity, SensorEntity):
+class BatterySensor(SolemEntity, RestoreSensor):
     """Experimental battery level sensor.
 
     Reads the 11th byte of the controller's status packet, which empirical
@@ -101,11 +126,21 @@ class BatterySensor(SolemEntity, SensorEntity):
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator, "battery")
+        self._restored_value: int | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_sensor_data()
+        if last is not None and last.native_value is not None:
+            try:
+                self._restored_value = int(last.native_value)
+            except (TypeError, ValueError):
+                self._restored_value = None
 
     @property
     def native_value(self) -> int | None:
         if self.coordinator.data is None:
-            return None
+            return self._restored_value
         return self.coordinator.data.battery_level
 
 

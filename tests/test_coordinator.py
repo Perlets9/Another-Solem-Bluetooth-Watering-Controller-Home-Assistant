@@ -5,6 +5,7 @@ from datetime import timedelta
 from types import MethodType
 
 import pytest
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.another_solem_bluetooth_watering_controller.const import (
     CONF_ACTIVE_POLL_INTERVAL,
@@ -66,6 +67,7 @@ def _coordinator(
     coordinator.programs_last_refresh = None
     coordinator._programs_refresh_interval = timedelta(seconds=21600)
     coordinator._programs_listeners = set()
+    coordinator.last_update_success = True
     coordinator._async_set_latest_ble_device = MethodType(
         lambda self: ble_device_available,
         coordinator,
@@ -74,6 +76,7 @@ def _coordinator(
         lambda self, data: None,
         coordinator,
     )
+    coordinator.async_update_listeners = MethodType(lambda self: None, coordinator)
     return coordinator
 
 
@@ -203,13 +206,19 @@ async def test_polling_is_skipped_while_manual_command_is_pending() -> None:
 
 
 @pytest.mark.asyncio
-async def test_polling_marks_status_unknown_when_device_is_unavailable() -> None:
+async def test_polling_raises_update_failed_when_device_is_unavailable() -> None:
+    # When the BL-IP is out of range, the coordinator must raise UpdateFailed
+    # so HA preserves the last known ``data`` and marks the coordinator as
+    # unsuccessful (entities -> ``unavailable``) instead of broadcasting None
+    # which would push every entity to ``unknown``.
     coordinator = _coordinator(ble_device_available=False)
+    coordinator.data = SolemStatus(SolemMode.IDLE, False, 0, "previous")
 
-    status = await coordinator._async_update_data()
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
 
-    assert status is None
     assert coordinator.client.reads == 0
+    assert coordinator.data == SolemStatus(SolemMode.IDLE, False, 0, "previous")
 
 
 @pytest.mark.asyncio
@@ -270,14 +279,22 @@ async def test_refresh_status_reads_real_status_and_updates_coordinator_data() -
 
 @pytest.mark.asyncio
 async def test_refresh_status_clears_pending_flag_when_device_is_unavailable() -> None:
+    # A failed manual refresh must NOT broadcast ``None`` (which would wipe
+    # every entity to ``unknown``); the previous ``data`` must survive and
+    # the coordinator must be flagged as unsuccessful so entities go to
+    # ``unavailable`` instead.
     coordinator = _coordinator(ble_device_available=False)
+    previous = SolemStatus(SolemMode.IDLE, False, 0, "previous")
+    coordinator.data = previous
     updates = _record_coordinator_updates(coordinator)
 
     await coordinator.async_refresh_status()
 
     assert coordinator._manual_command_pending is False
     assert coordinator.client.reads == 0
-    assert updates == [None]
+    assert updates == []
+    assert coordinator.data == previous
+    assert coordinator.last_update_success is False
 
 
 # ---------------------------------------------------------------------- #

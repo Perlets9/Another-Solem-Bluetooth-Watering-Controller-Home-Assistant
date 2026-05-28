@@ -339,9 +339,13 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
             try:
                 status = await self._async_read_status()
             except UpdateFailed as err:
+                # Surface the failure so DataUpdateCoordinator preserves the
+                # last known ``data`` and marks ``last_update_success=False``.
+                # Entities will report ``unavailable`` (with the previous value
+                # still visible in history) instead of going to ``unknown``.
                 _LOGGER.debug("SOLEM status unavailable during polling: %s", err)
                 self._apply_adaptive_interval(None)
-                return None
+                raise
             self._track_watering_transitions(status)
             self._apply_adaptive_interval(status)
             should_refresh_programs = self._programs_refresh_due()
@@ -466,7 +470,14 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
         self.active_program = None
 
     async def async_refresh_status(self) -> None:
-        """Manually refresh the controller status through the BLE operation queue."""
+        """Manually refresh the controller status through the BLE operation queue.
+
+        On read failure we deliberately do **not** broadcast ``None`` via
+        ``async_set_updated_data``: that would wipe ``coordinator.data`` and
+        make every entity go to ``unknown``. Instead we mark the coordinator
+        as unsuccessful so entities surface ``unavailable`` while keeping the
+        last known value in history.
+        """
         self._manual_command_pending = True
         try:
             async with self._ble_operation_lock:
@@ -474,7 +485,10 @@ class SolemCoordinator(DataUpdateCoordinator[SolemStatus | None]):
                     status = await self._async_read_status()
                 except Exception as err:
                     _LOGGER.debug("SOLEM status unavailable during manual refresh: %s", err)
-                    status = None
+                    self.last_update_success = False
+                    self._apply_adaptive_interval(None)
+                    self.async_update_listeners()
+                    return
                 self._track_watering_transitions(status)
                 self.async_set_updated_data(status)
                 self._apply_adaptive_interval(status)
