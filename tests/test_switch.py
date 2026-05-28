@@ -80,7 +80,7 @@ def test_run_program_switch_uses_program_name_when_available() -> None:
     coordinator.programs = [
         Program(
             slot=0,
-            name="Mattina",
+            name="Morning",
             water_budget=100,
             frequency_type=FrequencyType.DAILY,
             frequency_label="Daily",
@@ -92,4 +92,4 @@ def test_run_program_switch_uses_program_name_when_available() -> None:
     ]
 
     switch = RunProgramSwitch(coordinator, 1)
-    assert switch.name == "Mattina"
+    assert switch.name == "Morning"

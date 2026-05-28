@@ -13,8 +13,7 @@
           "active_poll_interval": "Intervallo polling durante irrigazione (secondi)",
           "bluetooth_timeout": "Timeout Bluetooth (secondi)",
           "keep_connection": "Mantieni la connessione BLE tra le operazioni",
-          "connection_idle_timeout": "Timeout di inattività connessione (secondi)",
-          "enable_program_editing": "Abilita entità per modificare i programmi"
+          "connection_idle_timeout": "Timeout di inattività connessione (secondi)"
         },
         "data_description": {
           "address": "L'indirizzo Bluetooth del tuo BL-IP. Compaiono solo i device che Home Assistant ha già visto in advertising.",
@@ -25,8 +24,7 @@
           "active_poll_interval": "Quanto spesso fare polling durante l'irrigazione, per tenere accurato il countdown. Valori più bassi consumano più batteria durante una sessione.",
           "bluetooth_timeout": "Tempo massimo di attesa per una connessione BLE o una notifica prima di rinunciare. Aumentalo se raggiungi il controller via proxy lento.",
           "keep_connection": "Riusa la sessione BLE tra operazioni consecutive invece di riconnettersi ogni volta. Consigliato attivo; la connessione si chiude automaticamente dopo il timeout di inattività sotto.",
-          "connection_idle_timeout": "Per quanto tempo tenere aperta la connessione BLE senza traffico. Valori brevi (5-15s) risparmiano batteria; valori lunghi rendono più reattivi i comandi consecutivi.",
-          "enable_program_editing": "Se attivo, espone entità select/number/text per modificare i programmi dalla UI. Ogni modifica genera una scrittura BLE sul controller. Disattivato di default."
+          "connection_idle_timeout": "Per quanto tempo tenere aperta la connessione BLE senza traffico. Valori brevi (5-15s) risparmiano batteria; valori lunghi rendono più reattivi i comandi consecutivi."
         }
       }
     },
@@ -51,8 +49,7 @@
           "active_poll_interval": "Intervallo polling durante irrigazione (secondi)",
           "bluetooth_timeout": "Timeout Bluetooth (secondi)",
           "keep_connection": "Mantieni la connessione BLE tra le operazioni",
-          "connection_idle_timeout": "Timeout di inattività connessione (secondi)",
-          "enable_program_editing": "Abilita entità per modificare i programmi"
+          "connection_idle_timeout": "Timeout di inattività connessione (secondi)"
         },
         "data_description": {
           "default_duration": "Durata usata dagli switch delle stazioni quando li accendi dalla UI. I servizi possono sovrascriverla per ogni chiamata.",
@@ -61,8 +58,7 @@
           "active_poll_interval": "Quanto spesso fare polling durante l'irrigazione. Valori più bassi consumano più batteria.",
           "bluetooth_timeout": "Tempo massimo di attesa per una connessione BLE o notifica. Aumentalo per proxy lenti.",
           "keep_connection": "Riusa la sessione BLE tra operazioni consecutive. La connessione si chiude dopo il timeout di inattività.",
-          "connection_idle_timeout": "Per quanto tempo tenere aperta la connessione senza traffico. Valori brevi (5-15s) risparmiano batteria; valori lunghi rendono più reattivi i comandi consecutivi.",
-          "enable_program_editing": "Se attivo, espone entità select/number/text per modificare i programmi dalla UI. Disattivato di default."
+          "connection_idle_timeout": "Per quanto tempo tenere aperta la connessione senza traffico. Valori brevi (5-15s) risparmiano batteria; valori lunghi rendono più reattivi i comandi consecutivi."
         }
       }
     }

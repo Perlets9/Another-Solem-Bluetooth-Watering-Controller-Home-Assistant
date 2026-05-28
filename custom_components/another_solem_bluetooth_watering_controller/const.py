@@ -29,9 +29,6 @@ CONF_CONNECTION_IDLE_TIMEOUT = "connection_idle_timeout"
 # Programs change rarely; reading them is a 84-frame chatty operation. 6h
 # strikes a good balance for "show me the schedule" use cases.
 CONF_PROGRAMS_REFRESH_INTERVAL = "programs_refresh_interval"
-# Opt-in flag that exposes editing entities (select/number/text) for program
-# fields. Off by default because every entity change triggers a BLE write.
-CONF_ENABLE_PROGRAM_EDITING = "enable_program_editing"
 
 SUPPORTED_STATION_COUNTS = (1, 2, 4, 6)
 DEFAULT_DURATION = 10
@@ -51,7 +48,6 @@ DEFAULT_KEEP_CONNECTION = True
 # with bleak-retry-connector's service cache, so we err on the short side.
 DEFAULT_CONNECTION_IDLE_TIMEOUT = 15
 DEFAULT_PROGRAMS_REFRESH_INTERVAL = 21600  # 6 hours
-DEFAULT_ENABLE_PROGRAM_EDITING = False
 
 MIN_DURATION = 1
 MAX_DURATION = 720

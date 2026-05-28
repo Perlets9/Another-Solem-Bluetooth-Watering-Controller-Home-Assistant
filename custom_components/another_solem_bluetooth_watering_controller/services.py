@@ -158,9 +158,11 @@ def _build_program_changes(call_data: dict) -> dict:
     if ATTR_START_TIMES in call_data:
         changes["start_times"] = list(call_data[ATTR_START_TIMES])
     if ATTR_STATIONS in call_data:
+        # Service exposes durations in minutes (matches the rest of the
+        # integration); the firmware stores them in seconds, hence the *60.
         changes["stations"] = {
-            int(idx): int(seconds) * 60
-            for idx, seconds in call_data[ATTR_STATIONS].items()
+            int(idx): int(minutes) * 60
+            for idx, minutes in call_data[ATTR_STATIONS].items()
         }
     return changes
 

@@ -375,7 +375,7 @@ def test_encode_program_preserves_reserved_bytes_after_partial_modification() ->
         reserved_tail,
     )
     original = parse_program_slot(0, raw_rows)
-    modified = apply_program_changes(original, name="Mattina", water_budget=80)
+    modified = apply_program_changes(original, name="Morning", water_budget=80)
     encoded = encode_program(modified)
 
     # Reserved rows verbatim
@@ -385,7 +385,7 @@ def test_encode_program_preserves_reserved_bytes_after_partial_modification() ->
     # Reserved leading 3 bytes of the flags row preserved
     assert encoded[2][:3] == reserved_flags_leading
     # Name actually changed
-    assert encoded[0] == _name_payload("Mattina")
+    assert encoded[0] == _name_payload("Morning")
     # Water budget byte updated
     assert encoded[2][3] == 80
 
@@ -506,7 +506,7 @@ def test_unknown_diff_locations_allows_known_offsets() -> None:
         b"\x00" * TAIL_ROW_LEN,
     )
     modified = (
-        _name_payload("Mattina"),  # change row 0
+        _name_payload("Morning"),  # change row 0
         original[1],
         _flags_payload(budget=80),  # change byte 3 of flags row
         original[3],

@@ -90,7 +90,7 @@ class RunProgramButton(SolemEntity, ButtonEntity):
     """Run one of the controller's pre-configured programs on demand.
 
     The button's display name follows the program's name as read from the
-    device (e.g. "Run Mattina") when available. Until the program records
+    device (e.g. "Run Morning") when available. Until the program records
     are loaded we fall back to the static MySolem labels (Program A/B/C).
     """
 

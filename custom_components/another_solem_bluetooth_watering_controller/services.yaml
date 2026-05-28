@@ -102,7 +102,7 @@ configure_program:
     name:
       name: Name
       description: New program name (max 16 ASCII characters).
-      example: Mattina
+      example: Morning
       selector:
         text:
     water_budget:

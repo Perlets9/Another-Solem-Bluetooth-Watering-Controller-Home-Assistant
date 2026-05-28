@@ -13,8 +13,10 @@ This integration handles local BLE control, status polling and program managemen
 - Read the live controller status, battery, and Bluetooth signal strength.
 - Read the 3 user programs (name, frequency, water budget, start times,
   station assignments).
-- Optionally edit programs (name, water budget, frequency, ...) directly
-  from Home Assistant entities and services -- behind an opt-in flag.
+- Fully edit a program slot (name, frequency, days, start times, station
+  assignments, water budget) in a single atomic write via the
+  `configure_program` service. See [Configuring a program from Home
+  Assistant](#configuring-a-program-from-home-assistant).
 
 It does not include weather, schedules outside the controller's native
 programs, water consumption, rain logic, or soil moisture logic. Build
@@ -95,6 +97,81 @@ Stop any manual watering.
   target:
     device_id: <solem_device_id>
 ```
+
+### `another_solem_bluetooth_watering_controller.run_program`
+
+Run one of the controller's pre-configured programs (A, B, or C). The
+controller iterates over the program's stations on its own using the
+durations stored on the device.
+
+```yaml
+- service: another_solem_bluetooth_watering_controller.run_program
+  target:
+    device_id: <solem_device_id>
+  data:
+    program: 1   # 1=A, 2=B, 3=C
+```
+
+## Configuring a program from Home Assistant
+
+A "program" on the BL-IP is the full package the controller runs
+autonomously when its clock hits one of the program's **start times**:
+name + frequency + per-station durations + start times + water budget.
+The MySolem app composes one with a multi-step UI; this integration
+exposes the same capability as a **single service call** so you can
+build/update an entire program from a script or automation.
+
+> You only need this if you want the BL-IP to water on its own (e.g.
+> when Home Assistant is offline). If you drive everything from HA
+> automations, ignore this section.
+
+### `another_solem_bluetooth_watering_controller.configure_program`
+
+Read-modify-write a program slot atomically. Only the fields you pass
+are changed; reserved/undecoded bytes are preserved byte-for-byte
+(write is refused if a change would touch them).
+
+| Field | Type | Notes |
+|---|---|---|
+| `program` | `1` / `2` / `3` | program slot to modify (A/B/C) |
+| `name` | string | max 16 ASCII characters |
+| `water_budget` | int `0..200` | percentage multiplier, `100` = normal |
+| `frequency` | string | one of `daily`, `custom`, `even_days`, `odd_days`, `odd_days_excl_31`, `interval` |
+| `period_days` | int `1..30` | used with `frequency: interval` (e.g. `7` for weekly) |
+| `days_of_week` | list | used with `frequency: custom`, items from `mon, tue, wed, thu, fri, sat, sun` |
+| `start_times` | list of `HH:MM` | up to 8 entries; empty list clears the schedule |
+| `stations` | mapping `{station: minutes}` | up to 5 stations; missing/`0` entries deassign |
+
+Full example: a "Morning" program that runs every Mon/Wed/Fri at 06:30
+and 19:00, watering station 1 for 15 min and station 2 for 10 min:
+
+```yaml
+- service: another_solem_bluetooth_watering_controller.configure_program
+  target:
+    device_id: <solem_device_id>
+  data:
+    program: 1
+    name: "Morning"
+    frequency: custom
+    days_of_week: [mon, wed, fri]
+    water_budget: 100
+    start_times: ["06:30", "19:00"]
+    stations:
+      1: 15
+      2: 10
+```
+
+Smaller examples:
+
+- Rename a program: `data: { program: 2, name: "Evening" }`
+- Bump the water budget temporarily to 120%: `data: { program: 1, water_budget: 120 }`
+- Switch to "every 3 days": `data: { program: 1, frequency: interval, period_days: 3 }`
+- Clear the schedule (program will never fire on its own):
+  `data: { program: 1, start_times: [] }`
+
+After the write completes the cached program sensors
+(`sensor.<device>_program_X_name`, `..._frequency`, `..._water_budget`,
+`..._start_times`, `..._stations`) refresh automatically.
 
 ### Full automation example: different durations per station
 
