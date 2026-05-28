@@ -22,11 +22,23 @@ It does not include weather, schedules outside the controller's native
 programs, water consumption, rain logic, or soil moisture logic. Build
 that behavior with native Home Assistant automations and helpers.
 
-### Example dashboard
+### Screenshots
 
-A ready-to-use Lovelace dashboard is provided at
-[`examples/dashboard.yaml`](examples/dashboard.yaml). Replace the entity IDs
-with the ones your instance generated (they are based on your device name).
+A visual tour of what the integration looks like inside Home Assistant
+once installed. All images live in [`docs/screenshots/`](docs/screenshots/);
+see that folder's README if you want to contribute updated versions.
+
+| Screenshot | What it shows |
+|---|---|
+| [Device card](docs/screenshots/device-card.png) | Every BL-IP shows up as a single device in `Settings > Devices & services`, grouping all the sensors, switches, buttons and diagnostic entries the integration creates. |
+| [Sample dashboard](docs/screenshots/dashboard.png) | The ready-to-use Lovelace layout for the most common controls, generated from [`examples/dashboard.yaml`](examples/dashboard.yaml). |
+| [Options flow](docs/screenshots/options-flow.png) | `Settings > Devices & services > <your SOLEM> > Configure` — polling cadence, Bluetooth timeout and connection-idle knobs. Suggested presets in [Tuning for battery life](#tuning-for-battery-life). |
+| [`start_station` in Developer Tools](docs/screenshots/start-station-service.png) | `Developer Tools > Actions`, the fastest way to fire any service for a one-off run. Pick the device from the dropdown and HA fills in `device_id`. |
+| [`configure_program` in Developer Tools](docs/screenshots/configure-program-service.png) | Composing an entire program in a single service call. Toggle the form to YAML mode for fields like `start_times: []`. |
+
+> When you copy [`examples/dashboard.yaml`](examples/dashboard.yaml) into
+> Lovelace, remember to replace the entity IDs with the ones your instance
+> generated (they are derived from your device name).
 
 ## Installation
 
@@ -161,15 +173,128 @@ and 19:00, watering station 1 for 15 min and station 2 for 10 min:
       2: 10
 ```
 
-Smaller examples:
+### Running a service from Home Assistant
 
-- Rename a program: `data: { program: 2, name: "Evening" }`
-- Bump the water budget temporarily to 120%: `data: { program: 1, water_budget: 120 }`
-- Switch to "every 3 days": `data: { program: 1, frequency: interval, period_days: 3 }`
-- Clear the schedule (program will never fire on its own):
-  `data: { program: 1, start_times: [] }`
+There are three ways to fire any of these services, from the most ad-hoc to
+the most reusable. The same approach works for `start_station`,
+`start_all_stations`, `stop`, `run_program` and `configure_program`.
 
-After the write completes the cached program sensors
+**A — Developer Tools (one-off run)**
+
+Open `Developer Tools` (the screwdriver icon in the sidebar) → `Actions` tab,
+search for the service, fill in the form, press `Perform action`. For
+fields typed as "object" (`stations`, `start_times` when you want an empty
+list), toggle the form to YAML mode and paste a payload like the examples
+above. See the
+[Calling configure_program from Developer Tools](#calling-configure_program-from-developer-tools)
+screenshot for what the panel looks like.
+
+**B — A reusable script**
+
+Save the call as a script so you can run it from a Lovelace button card, an
+automation, or by calling `script.<id>` from anywhere:
+
+```yaml
+solem_disable_program_a:
+  alias: "Solem: pause Program A"
+  sequence:
+    - action: another_solem_bluetooth_watering_controller.configure_program
+      data:
+        device_id: <solem_device_id>
+        program: 1
+        start_times: []
+```
+
+**C — Inline in an automation**
+
+```yaml
+- alias: "Pause SOLEM programs when it rains"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.is_raining
+      to: "on"
+  action:
+    - action: another_solem_bluetooth_watering_controller.configure_program
+      data:
+        device_id: <solem_device_id>
+        program: 1
+        start_times: []
+```
+
+### Common recipes
+
+Quick payload-only references for the most useful operations. In every
+example, replace `<solem_device_id>` with your controller's `device_id`
+(you can find it in `Settings > Devices & services > <your SOLEM>` — it's
+the last segment of the browser URL, or it gets filled automatically when
+you pick the device from the Developer Tools form).
+
+**Pause a program (DIY rain delay)**
+
+The program stays on the controller but never fires by itself, because it
+has no scheduled start times:
+
+```yaml
+action: another_solem_bluetooth_watering_controller.configure_program
+data:
+  device_id: <solem_device_id>
+  program: 1
+  start_times: []
+```
+
+**Resume the program**
+
+```yaml
+action: another_solem_bluetooth_watering_controller.configure_program
+data:
+  device_id: <solem_device_id>
+  program: 1
+  start_times: ["06:30", "19:00"]
+```
+
+**Lower watering for the cooler months**
+
+```yaml
+action: another_solem_bluetooth_watering_controller.configure_program
+data:
+  device_id: <solem_device_id>
+  program: 1
+  water_budget: 60
+```
+
+**Switch a program to "every 3 days"**
+
+```yaml
+action: another_solem_bluetooth_watering_controller.configure_program
+data:
+  device_id: <solem_device_id>
+  program: 1
+  frequency: interval
+  period_days: 3
+```
+
+**Rename a program**
+
+```yaml
+action: another_solem_bluetooth_watering_controller.configure_program
+data:
+  device_id: <solem_device_id>
+  program: 2
+  name: "Evening"
+```
+
+**Force-stop anything that is currently watering**
+
+Halts both manual cycles and any program currently being executed by the
+controller's clock:
+
+```yaml
+action: another_solem_bluetooth_watering_controller.stop
+data:
+  device_id: <solem_device_id>
+```
+
+After any `configure_program` write completes the cached program sensors
 (`sensor.<device>_program_X_name`, `..._frequency`, `..._water_budget`,
 `..._start_times`, `..._stations`) refresh automatically.
 
@@ -267,10 +392,8 @@ If you reach the BL-IP via an ESPHome Bluetooth Proxy, keep the proxy firmware u
 - [ ] Complete support for 1, 2, 4, and 6 station variants, including entity naming and hardware tests for each controller type.
 - [ ] Add rain sensor or water meter input status if the BLE protocol exposes it, such as rain sensor active or water meter pulse/status.
 - [ ] Investigate master valve / pump output awareness. The BL-IP `P` output starts 2 seconds before each station and stays active during watering; expose pump active if readable.
-- [ ] Add battery status, if available over BLE, because BL-IP controllers run on a 9V battery.
-- [ ] Add read-only program/storage inspection for programs and durations configured in the MySOLEM app, without managing schedules from Home Assistant.
+- [ ] Reverse-engineer the MySolem "Permanent OFF / Rain Delay" command (currently the integration only reads back the `programmed_off` mode; the opcode to enter it is unknown). Once captured, expose it as a switch or service.
 - [ ] Add read-only Eco Mode / controller settings for diagnostics if the protocol exposes them.
-- [ ] Add richer diagnostics with raw BLE status, firmware/device info, address, last successful poll, and last command result.
 
 ## Hardware Verification
 
